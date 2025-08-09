@@ -1,0 +1,19 @@
+node_modules
+# Build output
+dist
+# Temporary files
+temp
+*.tmp
+*.bak
+*.swp
+*.orig
+# Logs
+logs
+# Environment files
+.env
+# Editor directories and files
+.vscode/*
+# Ignore all files in .vscode except extensions.json
+!.vscode/extensions.json
+# Miscellaneous
+.DS_Store
