@@ -7,6 +7,7 @@ import medicineRouter from "./routes/medicine.route.js";
 import inventoryRouter from "./routes/inventory.route.js";
 import locationRouter from "./routes/location.route.js";
 import supplierRouter from "./routes/supplier.route.js";
+import branchRouter from "./routes/branch.route.js";
 import cookieParser from "cookie-parser";
 import path from "path";
 import Branch from "./models/branch.model.js";
@@ -149,6 +150,7 @@ app.use("/backend/location", locationRouter);
 import userRouter from "./routes/user.route.js";
 app.use("/backend/user", userRouter);
 app.use("/backend/supplier", supplierRouter);
+app.use("/backend/branch", branchRouter);
 
 // Temporary debug endpoints (remove after diagnosing 404 issue)
 app.get("/backend/ping", (req, res) => {

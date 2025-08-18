@@ -22,6 +22,14 @@ const requestSchema = new mongoose.Schema(
     reason: { type: String },
     rejectionNote: { type: String },
     fulfilledAt: { type: Date },
+    // Simple chat-style message thread between branch (employee) and admin
+    messages: [
+      {
+        sender: { type: String, enum: ["admin", "branch"], required: true },
+        text: { type: String, required: true },
+        createdAt: { type: Date, default: Date.now },
+      },
+    ],
   },
   { timestamps: true }
 );

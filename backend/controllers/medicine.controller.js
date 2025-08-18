@@ -219,3 +219,17 @@ export const purgeMedicine = async (req, res) => {
     res.status(400).json({ success: false, message: error.message });
   }
 };
+
+// Active medicines (not deleted & not expired as of today)
+export const getActiveMedicines = async (_req, res) => {
+  try {
+    const today = new Date();
+    const medicines = await Medicine.find({
+      isDeleted: false,
+      expiryDate: { $gte: today },
+    }).populate("supplier");
+    res.json({ success: true, medicines });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+};

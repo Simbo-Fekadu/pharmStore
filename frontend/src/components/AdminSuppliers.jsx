@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Edit3, Save, X, Trash2 } from "lucide-react";
 const API = "http://localhost:3000/backend";
 
 const empty = { supplierName: "", phoneNumber: "", address: "" };
@@ -10,6 +11,9 @@ const AdminSuppliers = () => {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [isError, setIsError] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState(empty);
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -55,6 +59,55 @@ const AdminSuppliers = () => {
       setIsError(true);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const startEdit = (s) => {
+    setEditingId(s._id);
+    setEditForm({
+      supplierName: s.supplierName,
+      phoneNumber: s.phoneNumber,
+      address: s.address || "",
+    });
+  };
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditForm(empty);
+  };
+  const saveEdit = async () => {
+    if (!editingId) return;
+    setSavingEdit(true);
+    try {
+      const res = await fetch(`${API}/supplier/${editingId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editForm),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setList((ls) =>
+          ls.map((x) => (x._id === editingId ? data.supplier : x))
+        );
+        cancelEdit();
+      } else {
+        alert(data.message || "Update failed");
+      }
+    } catch {
+      alert("Network error");
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+  const removeSupplier = async (id) => {
+    if (!confirm("Delete this supplier?")) return;
+    try {
+      const res = await fetch(`${API}/supplier/${id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (res.ok && data.success)
+        setList((ls) => ls.filter((x) => x._id !== id));
+      else alert(data.message || "Delete failed");
+    } catch {
+      alert("Network error");
     }
   };
 
@@ -133,6 +186,7 @@ const AdminSuppliers = () => {
                   <th className="py-2 pr-3">Name</th>
                   <th className="py-2 pr-3">Phone</th>
                   <th className="py-2 pr-3">Address</th>
+                  <th className="py-2 pr-3">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -142,13 +196,94 @@ const AdminSuppliers = () => {
                     className="border-t border-white/5 hover:bg-white/5"
                   >
                     <td className="py-1.5 pr-3 font-medium text-white/90">
-                      {s.supplierName}
+                      {editingId === s._id ? (
+                        <input
+                          value={editForm.supplierName}
+                          onChange={(e) =>
+                            setEditForm((f) => ({
+                              ...f,
+                              supplierName: e.target.value,
+                            }))
+                          }
+                          className="px-2 py-1 rounded bg-white/80 text-gray-800 w-32"
+                        />
+                      ) : (
+                        s.supplierName
+                      )}
                     </td>
                     <td className="py-1.5 pr-3 text-white/70">
-                      {s.phoneNumber}
+                      {editingId === s._id ? (
+                        <input
+                          value={editForm.phoneNumber}
+                          onChange={(e) =>
+                            setEditForm((f) => ({
+                              ...f,
+                              phoneNumber: e.target.value,
+                            }))
+                          }
+                          className="px-2 py-1 rounded bg-white/80 text-gray-800 w-32"
+                        />
+                      ) : (
+                        s.phoneNumber
+                      )}
                     </td>
                     <td className="py-1.5 pr-3 text-white/70">
-                      {s.address || "-"}
+                      {editingId === s._id ? (
+                        <input
+                          value={editForm.address}
+                          onChange={(e) =>
+                            setEditForm((f) => ({
+                              ...f,
+                              address: e.target.value,
+                            }))
+                          }
+                          className="px-2 py-1 rounded bg-white/80 text-gray-800 w-40"
+                        />
+                      ) : (
+                        s.address || "-"
+                      )}
+                    </td>
+                    <td className="py-1.5 pr-3 text-white/70">
+                      {editingId === s._id ? (
+                        <div className="flex gap-1">
+                          <button
+                            onClick={saveEdit}
+                            disabled={savingEdit}
+                            className="w-8 h-8 inline-flex items-center justify-center rounded-xl bg-green-500/20 border border-green-400/30 hover:bg-green-500/30"
+                            title="Save"
+                            type="button"
+                          >
+                            <Save className="w-4 h-4 text-green-300" />
+                          </button>
+                          <button
+                            onClick={cancelEdit}
+                            className="w-8 h-8 inline-flex items-center justify-center rounded-xl bg-white/10 border border-white/10 hover:bg-white/20"
+                            title="Cancel"
+                            type="button"
+                          >
+                            <X className="w-4 h-4 text-white/70" />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex gap-1">
+                          <button
+                            onClick={() => startEdit(s)}
+                            className="w-8 h-8 inline-flex items-center justify-center rounded-xl bg-white/10 border border-white/10 hover:bg-white/20"
+                            title="Edit"
+                            type="button"
+                          >
+                            <Edit3 className="w-4 h-4 text-white/70" />
+                          </button>
+                          <button
+                            onClick={() => removeSupplier(s._id)}
+                            className="w-8 h-8 inline-flex items-center justify-center rounded-xl bg-white/10 border border-white/10 hover:bg-white/20"
+                            title="Delete"
+                            type="button"
+                          >
+                            <Trash2 className="w-4 h-4 text-white/60" />
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}

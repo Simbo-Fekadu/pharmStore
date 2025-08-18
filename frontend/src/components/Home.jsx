@@ -193,17 +193,56 @@ const Home = () => {
             )}
           </div>
 
-          {/* Placeholder sections for future expansion */}
-          <div className="grid md:grid-cols-2 gap-6">
-            <div className="bg-white/10 rounded-xl p-4 md:p-6 border border-white/10 min-h-[180px] flex items-center justify-center text-white/60 text-sm md:text-base">
-              Upcoming: Sales Trends Chart
+          {/* Inventory Stock Breakdown Graph */}
+          <div className="bg-white/10 rounded-xl p-4 md:p-6 border border-white/10 shadow-xl">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg md:text-xl font-semibold">
+                Stock Distribution
+              </h2>
+              <span className="text-xs text-white/60">Last 30 days</span>
             </div>
-            <div className="bg-white/10 rounded-xl p-4 md:p-6 border border-white/10 min-h-[180px] flex items-center justify-center text-white/60 text-sm md:text-base">
-              Upcoming: Expiring Medicines Widget
-            </div>
+            <StockBarChart inventory={inventory} />
           </div>
         </div>
       </main>
+    </div>
+  );
+};
+
+// Simple inline bar chart component (no external deps) summarizing quantities by medicine name (top 8)
+const StockBarChart = ({ inventory }) => {
+  if (!inventory || inventory.length === 0)
+    return (
+      <div className="text-white/60 text-sm py-6 text-center">No data</div>
+    );
+  const agg = {};
+  inventory.forEach((i) => {
+    const name = i.medicine?.medicineName || "Unknown";
+    agg[name] = (agg[name] || 0) + (i.quantity || 0);
+  });
+  const rows = Object.entries(agg)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8);
+  const max = Math.max(...rows.map((r) => r[1]), 1);
+  return (
+    <div className="space-y-3">
+      {rows.map(([name, val]) => {
+        const pct = (val / max) * 100;
+        return (
+          <div key={name} className="space-y-1">
+            <div className="flex justify-between text-xs text-white/70">
+              <span className="truncate pr-2 max-w-[55%]">{name}</span>
+              <span>{val}</span>
+            </div>
+            <div className="h-3 w-full bg-white/10 rounded overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-[var(--brand)] to-[var(--brand-hover)]"
+                style={{ width: pct + "%" }}
+              />
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 };

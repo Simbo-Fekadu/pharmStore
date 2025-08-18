@@ -44,6 +44,8 @@ const AdminMedicines = () => {
   const [showForm, setShowForm] = useState(true); // toggle form visibility
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 10;
   // Trash moved to dedicated page
 
   const load = async () => {
@@ -176,7 +178,10 @@ const AdminMedicines = () => {
 
   // Derive filtered list for search/filter
   const lcSearch = search.trim().toLowerCase();
+  const today = new Date();
   const filteredList = list.filter((m) => {
+    // Exclude expired
+    if (m.expiryDate && new Date(m.expiryDate) < today) return false;
     if (categoryFilter !== "all" && m.category !== categoryFilter) return false;
     if (!lcSearch) return true;
     return (
@@ -189,6 +194,19 @@ const AdminMedicines = () => {
   const uniqueCategories = Array.from(
     new Set(list.map((m) => m.category))
   ).sort();
+
+  // Pagination calculations
+  const total = filteredList.length;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const startIdx = (currentPage - 1) * PAGE_SIZE;
+  const visibleList = filteredList.slice(startIdx, startIdx + PAGE_SIZE);
+
+  // Reset to first page on filter/search/list change
+  useEffect(() => {
+    setPage(1);
+    setOpenRow(null);
+  }, [search, categoryFilter, list.length]);
 
   return (
     <div className="space-y-10">
@@ -473,178 +491,214 @@ const AdminMedicines = () => {
           ) : filteredList.length === 0 ? (
             <div className="text-sm text-white/60">No medicines</div>
           ) : (
-            <table className="w-full text-xs md:text-sm">
-              <thead>
-                <tr className="text-left text-white/70 bg-white/5">
-                  <th className="py-2 pr-3"> </th>
-                  <th className="py-2 pr-3">Name</th>
-                  <th className="py-2 pr-3">Brand</th>
-                  <th className="py-2 pr-3">Category</th>
-                  <th className="py-2 pr-3">Batch</th>
-                  <th className="py-2 pr-3">Expiry</th>
-                  <th className="py-2 pr-3">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredList.map((m) => {
-                  const isOpen = openRow === m._id;
-                  return (
-                    <>
-                      <tr
-                        key={m._id}
-                        className="border-t border-white/5 hover:bg-white/5"
-                      >
-                        <td className="py-1.5 pr-3 align-top">
-                          <button
-                            onClick={() => setOpenRow(isOpen ? null : m._id)}
-                            className="w-6 h-6 inline-flex items-center justify-center rounded bg-white/10 hover:bg-white/20 border border-white/10"
-                            title={isOpen ? "Collapse" : "Expand"}
-                          >
-                            {isOpen ? (
-                              <ChevronDown className="w-4 h-4 text-white/70" />
-                            ) : (
-                              <ChevronRight className="w-4 h-4 text-white/70" />
-                            )}
-                          </button>
-                        </td>
-                        <td className="py-1.5 pr-3 font-medium text-white/90">
-                          {m.medicineName}
-                        </td>
-                        <td className="py-1.5 pr-3 text-white/70">
-                          {m.brand || "-"}
-                        </td>
-                        <td className="py-1.5 pr-3 text-white/70">
-                          {m.category}
-                        </td>
-                        <td className="py-1.5 pr-3 text-white/70">
-                          {m.batchNumber}
-                        </td>
-                        <td className="py-1.5 pr-3 text-white/70">
-                          {new Date(m.expiryDate).toLocaleDateString()}
-                        </td>
-                        <td className="py-1.5 pr-3 text-white/70">
-                          <div className="flex items-center gap-2">
+            <>
+              <table className="w-full text-xs md:text-sm">
+                <thead>
+                  <tr className="text-left text-white/70 bg-white/5">
+                    <th className="py-2 pr-3"> </th>
+                    <th className="py-2 pr-3">Name</th>
+                    <th className="py-2 pr-3">Brand</th>
+                    <th className="py-2 pr-3">Category</th>
+                    <th className="py-2 pr-3">Batch</th>
+                    <th className="py-2 pr-3">Expiry</th>
+                    <th className="py-2 pr-3">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleList.map((m) => {
+                    const isOpen = openRow === m._id;
+                    return (
+                      <>
+                        <tr
+                          key={m._id}
+                          className="border-t border-white/5 hover:bg-white/5"
+                        >
+                          <td className="py-1.5 pr-3 align-top">
                             <button
-                              onClick={() => startEdit(m)}
-                              className="group inline-flex items-center justify-center w-8 h-8 rounded-xl bg-white/10 border border-white/10 backdrop-blur-sm hover:bg-white/20 hover:border-white/20 transition shadow-sm focus:outline-none focus:ring-2 focus:ring-white/30"
-                              title="Edit"
+                              onClick={() => setOpenRow(isOpen ? null : m._id)}
+                              className="w-6 h-6 inline-flex items-center justify-center rounded bg-white/10 hover:bg-white/20 border border-white/10"
+                              title={isOpen ? "Collapse" : "Expand"}
                             >
-                              <PenLine className="w-4 h-4 text-white/60 group-hover:text-white/90 transition" />
+                              {isOpen ? (
+                                <ChevronDown className="w-4 h-4 text-white/70" />
+                              ) : (
+                                <ChevronRight className="w-4 h-4 text-white/70" />
+                              )}
                             </button>
-                            <button
-                              onClick={() => softDelete(m._id)}
-                              className="group inline-flex items-center justify-center w-8 h-8 rounded-xl bg-white/10 border border-white/10 backdrop-blur-sm hover:bg-white/20 hover:border-white/20 transition shadow-sm focus:outline-none focus:ring-2 focus:ring-white/30"
-                              title="Move to Trash"
-                            >
-                              <Trash2 className="w-4 h-4 text-white/60 group-hover:text-white/90 transition" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                      {isOpen && (
-                        <tr className="bg-white/5">
-                          <td colSpan={7} className="px-6 py-4">
-                            <div className="grid md:grid-cols-3 gap-6 text-xs md:text-sm">
-                              <div className="space-y-2">
-                                <h4 className="font-semibold text-white/80 text-sm">
-                                  General
-                                </h4>
-                                <div>
-                                  <span className="text-white/50">Name: </span>
-                                  {m.medicineName}
-                                </div>
-                                <div>
-                                  <span className="text-white/50">Brand: </span>
-                                  {m.brand || "-"}
-                                </div>
-                                <div>
-                                  <span className="text-white/50">
-                                    Category:{" "}
-                                  </span>
-                                  {m.category}
-                                </div>
-                                <div>
-                                  <span className="text-white/50">Batch: </span>
-                                  {m.batchNumber}
-                                </div>
-                                <div>
-                                  <span className="text-white/50">
-                                    Expiry:{" "}
-                                  </span>
-                                  {new Date(m.expiryDate).toLocaleDateString()}
-                                </div>
-                                <div>
-                                  <span className="text-white/50">
-                                    Quantity:{" "}
-                                  </span>
-                                  {m.quantity ?? "-"}
-                                </div>
-                              </div>
-                              <div className="space-y-2">
-                                <h4 className="font-semibold text-white/80 text-sm">
-                                  Pricing
-                                </h4>
-                                <div>
-                                  <span className="text-white/50">
-                                    Purchase:{" "}
-                                  </span>
-                                  {m.purchasePrice}
-                                </div>
-                                <div>
-                                  <span className="text-white/50">
-                                    Selling:{" "}
-                                  </span>
-                                  {m.sellingPrice}
-                                </div>
-                              </div>
-                              <div className="space-y-2">
-                                <h4 className="font-semibold text-white/80 text-sm">
-                                  Supplier
-                                </h4>
-                                {m.supplier ? (
-                                  <>
-                                    <div>
-                                      <span className="text-white/50">
-                                        Name:{" "}
-                                      </span>
-                                      {m.supplier.supplierName || "-"}
-                                    </div>
-                                    <div>
-                                      <span className="text-white/50">
-                                        Phone:{" "}
-                                      </span>
-                                      {m.supplier.phoneNumber || "-"}
-                                    </div>
-                                    <div>
-                                      <span className="text-white/50">
-                                        Address:{" "}
-                                      </span>
-                                      {m.supplier.address || "-"}
-                                    </div>
-                                  </>
-                                ) : (
-                                  <div className="text-white/60">
-                                    No supplier
-                                  </div>
-                                )}
-                              </div>
-                              <div className="md:col-span-3 pt-2">
-                                <h4 className="font-semibold text-white/80 text-sm mb-1">
-                                  Description
-                                </h4>
-                                <p className="text-white/70 leading-relaxed whitespace-pre-line">
-                                  {m.description || "—"}
-                                </p>
-                              </div>
+                          </td>
+                          <td className="py-1.5 pr-3 font-medium text-white/90">
+                            {m.medicineName}
+                          </td>
+                          <td className="py-1.5 pr-3 text-white/70">
+                            {m.brand || "-"}
+                          </td>
+                          <td className="py-1.5 pr-3 text-white/70">
+                            {m.category}
+                          </td>
+                          <td className="py-1.5 pr-3 text-white/70">
+                            {m.batchNumber}
+                          </td>
+                          <td className="py-1.5 pr-3 text-white/70">
+                            {new Date(m.expiryDate).toLocaleDateString()}
+                          </td>
+                          <td className="py-1.5 pr-3 text-white/70">
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => startEdit(m)}
+                                className="group inline-flex items-center justify-center w-8 h-8 rounded-xl bg-white/10 border border-white/10 backdrop-blur-sm hover:bg-white/20 hover:border-white/20 transition shadow-sm focus:outline-none focus:ring-2 focus:ring-white/30"
+                                title="Edit"
+                              >
+                                <PenLine className="w-4 h-4 text-white/60 group-hover:text-white/90 transition" />
+                              </button>
+                              <button
+                                onClick={() => softDelete(m._id)}
+                                className="group inline-flex items-center justify-center w-8 h-8 rounded-xl bg-white/10 border border-white/10 backdrop-blur-sm hover:bg-white/20 hover:border-white/20 transition shadow-sm focus:outline-none focus:ring-2 focus:ring-white/30"
+                                title="Move to Trash"
+                              >
+                                <Trash2 className="w-4 h-4 text-white/60 group-hover:text-white/90 transition" />
+                              </button>
                             </div>
                           </td>
                         </tr>
-                      )}
-                    </>
-                  );
-                })}
-              </tbody>
-            </table>
+                        {isOpen && (
+                          <tr className="bg-white/5">
+                            <td colSpan={7} className="px-6 py-4">
+                              <div className="grid md:grid-cols-3 gap-6 text-xs md:text-sm">
+                                <div className="space-y-2">
+                                  <h4 className="font-semibold text-white/80 text-sm">
+                                    General
+                                  </h4>
+                                  <div>
+                                    <span className="text-white/50">
+                                      Name:{" "}
+                                    </span>
+                                    {m.medicineName}
+                                  </div>
+                                  <div>
+                                    <span className="text-white/50">
+                                      Brand:{" "}
+                                    </span>
+                                    {m.brand || "-"}
+                                  </div>
+                                  <div>
+                                    <span className="text-white/50">
+                                      Category:{" "}
+                                    </span>
+                                    {m.category}
+                                  </div>
+                                  <div>
+                                    <span className="text-white/50">
+                                      Batch:{" "}
+                                    </span>
+                                    {m.batchNumber}
+                                  </div>
+                                  <div>
+                                    <span className="text-white/50">
+                                      Expiry:{" "}
+                                    </span>
+                                    {new Date(
+                                      m.expiryDate
+                                    ).toLocaleDateString()}
+                                  </div>
+                                  <div>
+                                    <span className="text-white/50">
+                                      Quantity:{" "}
+                                    </span>
+                                    {m.quantity ?? "-"}
+                                  </div>
+                                </div>
+                                <div className="space-y-2">
+                                  <h4 className="font-semibold text-white/80 text-sm">
+                                    Pricing
+                                  </h4>
+                                  <div>
+                                    <span className="text-white/50">
+                                      Purchase:{" "}
+                                    </span>
+                                    {m.purchasePrice}
+                                  </div>
+                                  <div>
+                                    <span className="text-white/50">
+                                      Selling:{" "}
+                                    </span>
+                                    {m.sellingPrice}
+                                  </div>
+                                </div>
+                                <div className="space-y-2">
+                                  <h4 className="font-semibold text-white/80 text-sm">
+                                    Supplier
+                                  </h4>
+                                  {m.supplier ? (
+                                    <>
+                                      <div>
+                                        <span className="text-white/50">
+                                          Name:{" "}
+                                        </span>
+                                        {m.supplier.supplierName || "-"}
+                                      </div>
+                                      <div>
+                                        <span className="text-white/50">
+                                          Phone:{" "}
+                                        </span>
+                                        {m.supplier.phoneNumber || "-"}
+                                      </div>
+                                      <div>
+                                        <span className="text-white/50">
+                                          Address:{" "}
+                                        </span>
+                                        {m.supplier.address || "-"}
+                                      </div>
+                                    </>
+                                  ) : (
+                                    <div className="text-white/60">
+                                      No supplier
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="md:col-span-3 pt-2">
+                                  <h4 className="font-semibold text-white/80 text-sm mb-1">
+                                    Description
+                                  </h4>
+                                  <p className="text-white/70 leading-relaxed whitespace-pre-line">
+                                    {m.description || "—"}
+                                  </p>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {/* Pagination controls */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-5 text-xs md:text-sm">
+                <div className="opacity-70">
+                  Showing {total === 0 ? 0 : startIdx + 1}-
+                  {Math.min(startIdx + PAGE_SIZE, total)} of {total}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="px-3 py-1.5 rounded bg-white/10 border border-white/10 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/20"
+                  >
+                    Prev
+                  </button>
+                  <span className="px-2 select-none">
+                    Page {currentPage} / {totalPages}
+                  </span>
+                  <button
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="px-3 py-1.5 rounded bg-white/10 border border-white/10 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/20"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            </>
           )}
         </div>
       </div>

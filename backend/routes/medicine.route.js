@@ -7,6 +7,7 @@ import {
   deleteMedicine,
   restoreMedicine,
   purgeMedicine,
+  getActiveMedicines,
 } from "../controllers/medicine.controller.js";
 
 const router = express.Router();
@@ -14,6 +15,7 @@ const router = express.Router();
 // CRUD endpoints (merged from previous duplicate route file)
 router.post("/", createMedicine);
 router.get("/", getMedicines);
+router.get("/active/list", getActiveMedicines);
 router.get("/:id", getMedicine);
 router.put("/:id", updateMedicine);
 router.delete("/:id", deleteMedicine);

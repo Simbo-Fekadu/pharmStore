@@ -5,8 +5,10 @@ import {
   transferMedicine,
   createRequest,
   listRequests,
+  getRequest,
   approveRequest,
   rejectRequest,
+  addRequestMessage,
 } from "../controllers/inventory.controller.js";
 
 const router = express.Router();
@@ -24,9 +26,13 @@ router.post("/transfer", transferMedicine);
 router.post("/request", createRequest);
 // List all requests
 router.get("/request", listRequests);
+// Get single request
+router.get("/request/:id", getRequest);
 // Approve (fulfill) request
 router.post("/request/:id/approve", approveRequest);
 // Reject request
 router.post("/request/:id/reject", rejectRequest);
+// Add message to request thread
+router.post("/request/:id/message", addRequestMessage);
 
 export default router;

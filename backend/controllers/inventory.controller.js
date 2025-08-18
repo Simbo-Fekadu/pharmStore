@@ -15,13 +15,11 @@ export const upsertInventory = async (req, res, next) => {
     } = req.body;
     // For initial stock entry enforce Store location type
     if (locationType !== "Store") {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message:
-            "Direct stock entry allowed only at Store. Branches must request.",
-        });
+      return res.status(400).json({
+        success: false,
+        message:
+          "Direct stock entry allowed only at Store. Branches must request.",
+      });
     }
     let inventory = await Inventory.findOne({
       medicine: medicineId,
@@ -154,6 +152,47 @@ export const listRequests = async (_req, res) => {
       .populate("branch")
       .sort({ createdAt: -1 });
     res.status(200).json({ success: true, requests });
+  } catch (e) {
+    res.status(400).json({ success: false, message: e.message });
+  }
+};
+
+export const getRequest = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const request = await Request.findById(id)
+      .populate("medicine")
+      .populate("branch");
+    if (!request)
+      return res
+        .status(404)
+        .json({ success: false, message: "Request not found" });
+    res.status(200).json({ success: true, request });
+  } catch (e) {
+    res.status(400).json({ success: false, message: e.message });
+  }
+};
+
+export const addRequestMessage = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { sender, text } = req.body;
+    if (!sender || !text)
+      return res
+        .status(400)
+        .json({ success: false, message: "sender and text required" });
+    if (!["admin", "branch"].includes(sender))
+      return res
+        .status(400)
+        .json({ success: false, message: "invalid sender" });
+    const request = await Request.findById(id);
+    if (!request)
+      return res
+        .status(404)
+        .json({ success: false, message: "Request not found" });
+    request.messages.push({ sender, text });
+    await request.save();
+    res.status(201).json({ success: true, message: "Message added", request });
   } catch (e) {
     res.status(400).json({ success: false, message: e.message });
   }

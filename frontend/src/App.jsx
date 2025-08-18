@@ -6,6 +6,7 @@ import Home from "./components/Home";
 import InventoryPage from "./components/InventoryPage";
 import AdminLayout from "./components/AdminLayout";
 import AdminMedicines from "./components/AdminMedicines";
+import AdminActiveMedicines from "./components/AdminActiveMedicines";
 import AdminDashboard from "./components/AdminDashboard";
 import AdminMedicineTrash from "./components/AdminMedicineTrash";
 import AdminNearExpiry from "./components/AdminNearExpiry";
@@ -16,6 +17,7 @@ import AdminSuppliers from "./components/AdminSuppliers";
 import AdminBranches from "./components/AdminBranches";
 import BranchRequest from "./components/BranchRequest";
 import Fulfillment from "./components/Fulfillment";
+import AdminRequestCenter from "./components/AdminRequestCenter";
 function App() {
   return (
     <Router>
@@ -30,11 +32,12 @@ function App() {
         <Route path="/admin" element={<AdminLayout />}>
           <Route index element={<AdminDashboard />} />
           <Route path="medicines" element={<AdminMedicines />} />
+          <Route path="medicines/active" element={<AdminActiveMedicines />} />
           <Route path="medicines/trash" element={<AdminMedicineTrash />} />
           <Route path="medicines/near-expiry" element={<AdminNearExpiry />} />
           <Route path="medicines/expired" element={<AdminExpired />} />
           <Route path="inventory/store" element={<AdminInventory />} />
-          <Route path="inventory/branches" element={<BranchRequest />} />
+          <Route path="inventory/branches" element={<AdminRequestCenter />} />
           <Route path="users" element={<AdminUsers />} />
           <Route path="suppliers" element={<AdminSuppliers />} />
           <Route path="branches" element={<AdminBranches />} />

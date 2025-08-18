@@ -5,7 +5,7 @@ import errorHandler from "../utils/error.js";
 // Get all users
 export const getUsers = async (req, res) => {
   try {
-    const users = await User.find();
+    const users = await User.find().populate("branches");
     res.status(200).json({ success: true, users });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
@@ -15,7 +15,7 @@ export const getUsers = async (req, res) => {
 // Get user by ID
 export const getUser = async (req, res) => {
   try {
-    const user = await User.findById(req.params.id);
+    const user = await User.findById(req.params.id).populate("branches");
     if (!user)
       return res
         .status(404)
@@ -37,9 +37,15 @@ export const updateUser = async (req, res, next) => {
     if (req.body.password) {
       req.body.password = bcrypt.hashSync(req.body.password, 10);
     }
+    // If branches provided ensure it's an array of ids
+    if (req.body.branches && !Array.isArray(req.body.branches)) {
+      return res
+        .status(400)
+        .json({ success: false, message: "branches must be an array" });
+    }
     const user = await User.findByIdAndUpdate(req.params.id, req.body, {
       new: true,
-    });
+    }).populate("branches");
     if (!user)
       return res
         .status(404)
@@ -74,7 +80,7 @@ export const deleteUser = async (req, res, next) => {
 
 export const createEmployee = async (req, res) => {
   try {
-    const { username, email, password } = req.body;
+    const { username, email, password, branches } = req.body;
     if (!username || !email || !password) {
       return res
         .status(400)
@@ -86,6 +92,7 @@ export const createEmployee = async (req, res) => {
       email,
       password: hashed,
       role: "employee",
+      branches: Array.isArray(branches) ? branches : [],
     });
     await user.save();
     const { password: _p, ...safe } = user._doc;
