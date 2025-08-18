@@ -1,1 +1,98 @@
 @import "tailwindcss";
+
+/* Global Theme Variables (Professional Pharmacy Palette) */
+/* Light theme (default) */
+:root,
+[data-theme='light'] {
+	/* BLUE LIGHT MODE (match desired screenshot) */
+	--bg-start: #2B67A5; /* base blue */
+	--bg-mid:   #2F6EAF; /* middle blend */
+	--bg-end:   #3273B7; /* top gradient stop */
+	--surface:  rgba(255,255,255,0.08); /* subtle lift panels */
+	--surface-alt: rgba(255,255,255,0.14);
+	--brand: #25C3F6; /* bright cyan for active elements */
+	--brand-hover: #19b1e3;
+	--accent: #58A0C8; /* supportive accent */
+	--accent-hover: #4f8fb3;
+	--text-primary: #ffffff; /* white text on blue */
+	--text-secondary: #d0e4f5; /* muted */
+	--text-faint: #9dc2dc;
+	--border-color: rgba(255,255,255,0.18);
+	--panel-bg: rgba(255,255,255,0.06); /* card panels */
+	--panel-bg-alt: rgba(255,255,255,0.10);
+	--danger: #f87171;
+	--warn: #fbbf24;
+	--ok: #4ade80;
+}
+
+/* Dark theme */
+[data-theme='dark'] {
+	--bg-start: #0d1722;
+	--bg-mid:   #112636;
+	--bg-end:   #153349;
+	--surface:  #1e2d3a;
+	--surface-alt: #264256;
+	--brand: #26BAEE;
+	--brand-hover: #1ea2d1;
+	--accent: #73D2F3;
+	--accent-hover: #51c5ed;
+	--text-primary: #ffffff;
+	--text-secondary: #d1d5db;
+	--text-faint: #94a3b8;
+	--border-color: rgba(255,255,255,0.12);
+	--panel-bg: rgba(255,255,255,0.08);
+	--panel-bg-alt: rgba(255,255,255,0.04);
+	--danger: #f87171;
+	--warn: #fbbf24;
+	--ok: #4ade80;
+}
+
+/* Gradient background utility */
+/* Use gradient in blue light mode; dark mode keeps start color (fine) */
+.app-gradient { background: linear-gradient(145deg,var(--bg-start),var(--bg-mid),var(--bg-end)); }
+
+/* Brand button */
+.btn-brand {
+	background: var(--brand);
+	color: #fff;
+	transition: background .2s ease, filter .2s ease;
+}
+.btn-brand:hover { background: var(--brand-hover); }
+.btn-accent { background: var(--accent); color:#fff; }
+.btn-accent:hover { background: var(--accent-hover); }
+
+/* Glass panel refinement */
+.panel {
+	border-radius: 0.75rem;
+	border: 1px solid var(--border-color);
+	backdrop-filter: blur(8px);
+	background: var(--panel-bg);
+	box-shadow: 0 4px 12px -2px rgba(0,0,0,0.12);
+}
+
+/* Text helpers */
+.heading-gradient {
+	background: linear-gradient(90deg,var(--accent),var(--brand));
+		-webkit-background-clip: text;
+		background-clip: text;
+		color: transparent;
+}
+
+/* Override legacy hard-coded colors fallback */
+body { color: var(--text-primary); background: var(--bg-start); }
+html { font-size: 18px; } /* bumped for better visibility */
+body, button, input, select, textarea { font-family: 'Poppins', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; letter-spacing: 0.25px; }
+
+/* Helper sizes */
+.text-base-plus { font-size: 1.075rem; }
+.text-lg-plus { font-size: 1.225rem; }
+
+/* Improve legibility on long text blocks */
+p, li { line-height: 1.55; color: var(--text-secondary); }
+
+/* Utility for surfaces */
+.surface { background: var(--surface); }
+.surface-alt { background: var(--surface-alt); }
+
+/* Theme transition */
+body, .panel, .app-gradient { transition: background-color .35s ease, color .25s ease, border-color .35s ease; }

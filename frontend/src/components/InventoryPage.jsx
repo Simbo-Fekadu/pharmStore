@@ -1,0 +1,231 @@
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import InventoryForm from "./InventoryForm";
+import Sidebar from "./Sidebar";
+
+const InventoryPage = () => {
+  const navigate = useNavigate();
+  const [inventory, setInventory] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const locationType = "Store"; // placeholder
+  const locationId = "main"; // placeholder
+
+  const fetchInventory = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const params = new URLSearchParams({ locationType, locationId });
+      const res = await fetch(
+        `http://localhost:3000/backend/inventory?${params.toString()}`,
+        { credentials: "include" }
+      );
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setInventory(data.inventory || []);
+      } else setError(data.message || "Failed to load inventory");
+    } catch {
+      setError("Network error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchInventory();
+  }, []);
+
+  return (
+    <div className="min-h-screen flex app-gradient text-white">
+      <Sidebar />
+
+      {/* Mobile top bar */}
+      <div className="md:hidden fixed top-0 left-0 right-0 z-20 bg-[var(--bg-start)]/85 backdrop-blur-sm border-b border-white/10 px-4 py-3 flex items-center justify-between">
+        <div className="font-bold">PharmStore</div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => navigate("/home")}
+            className="px-3 py-1.5 text-xs rounded bg-white/10 hover:bg-white/20"
+          >
+            Home
+          </button>
+          <button
+            onClick={() => navigate("/signin")}
+            className="px-3 py-1.5 text-xs rounded bg-[var(--brand)] hover:bg-[var(--brand-hover)]"
+          >
+            Logout
+          </button>
+        </div>
+      </div>
+
+      {/* Content */}
+      <main className="flex-1 w-full md:pl-0 px-4 md:px-8 pt-20 md:pt-8 pb-12 overflow-y-auto">
+        <div className="max-w-7xl mx-auto space-y-10">
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+            <div>
+              <h1 className="text-3xl md:text-4xl font-bold tracking-tight">
+                Inventory
+              </h1>
+              <p className="text-white/70 mt-1 text-sm md:text-base">
+                Manage stock levels and add new items
+              </p>
+            </div>
+            <button
+              onClick={fetchInventory}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded bg-white/10 hover:bg-white/20 border border-white/20 text-sm font-medium backdrop-blur transition"
+            >
+              Refresh
+            </button>
+          </div>
+
+          {/* Grid: Form + Stats */}
+          <div className="grid lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2">
+              <InventoryForm onSuccess={fetchInventory} />
+            </div>
+            <div className="space-y-4">
+              <div className="bg-white/10 rounded-xl p-5 border border-white/10 shadow-lg backdrop-blur">
+                <h3 className="font-semibold mb-4 tracking-wide text-sm uppercase text-white/70">
+                  Quick Stats
+                </h3>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div className="bg-white/5 rounded p-3">
+                    <div className="text-white/60 text-xs">Items</div>
+                    <div className="text-lg font-bold">{inventory.length}</div>
+                  </div>
+                  <div className="bg-white/5 rounded p-3">
+                    <div className="text-white/60 text-xs">Low Stock</div>
+                    <div className="text-lg font-bold">
+                      {inventory.filter((i) => i.quantity < 10).length}
+                    </div>
+                  </div>
+                  <div className="bg-white/5 rounded p-3">
+                    <div className="text-white/60 text-xs">Expiring 7d</div>
+                    <div className="text-lg font-bold">
+                      {
+                        inventory.filter(
+                          (i) =>
+                            i.expiryDate &&
+                            new Date(i.expiryDate) <
+                              new Date(Date.now() + 7 * 86400000)
+                        ).length
+                      }
+                    </div>
+                  </div>
+                  <div className="bg-white/5 rounded p-3">
+                    <div className="text-white/60 text-xs">Batches</div>
+                    <div className="text-lg font-bold">
+                      {new Set(inventory.map((i) => i.batchNumber)).size}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-gradient-to-br from-[var(--accent)]/25 to-[var(--bg-start)]/60 rounded-xl p-5 border border-white/10 shadow-lg backdrop-blur">
+                <h3 className="font-semibold mb-2 tracking-wide text-sm uppercase text-white/70">
+                  Tips
+                </h3>
+                <p className="text-xs leading-relaxed text-white/70">
+                  Keep batch numbers accurate and update quantities after each
+                  transfer to maintain reliable analytics.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Inventory Table */}
+          <div className="bg-white/10 rounded-xl border border-white/10 shadow-xl backdrop-blur">
+            <div className="px-5 py-4 flex items-center justify-between border-b border-white/10">
+              <h2 className="font-semibold text-lg">Current Stock</h2>
+              <span className="text-xs px-2 py-1 rounded bg-white/10 border border-white/10">
+                {inventory.length} records
+              </span>
+            </div>
+            {loading ? (
+              <div className="py-12 text-center text-white/70 text-sm">
+                Loading inventory...
+              </div>
+            ) : error ? (
+              <div className="py-12 text-center text-red-300 text-sm">
+                {error}
+              </div>
+            ) : inventory.length === 0 ? (
+              <div className="py-12 text-center text-white/60 text-sm">
+                No inventory yet. Add items using the form.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-white/5 text-white/70 text-left">
+                      <th className="py-3 pl-5 pr-4 font-medium">Medicine</th>
+                      <th className="py-3 pr-4 font-medium">Qty</th>
+                      <th className="py-3 pr-4 font-medium">Batch</th>
+                      <th className="py-3 pr-4 font-medium hidden md:table-cell">
+                        Expiry
+                      </th>
+                      <th className="py-3 pr-5 font-medium">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {inventory.map((item) => {
+                      const expiringSoon =
+                        item.expiryDate &&
+                        new Date(item.expiryDate) <
+                          new Date(Date.now() + 7 * 86400000);
+                      const low = item.quantity < 10;
+                      return (
+                        <tr
+                          key={item._id}
+                          className="border-t border-white/5 hover:bg-white/5 transition"
+                        >
+                          <td className="py-2.5 pl-5 pr-4 font-medium text-white/90">
+                            {item.medicine?.medicineName || "-"}
+                          </td>
+                          <td className="py-2.5 pr-4">
+                            <span
+                              className={`px-2 py-1 rounded text-xs font-semibold inline-block ${
+                                low
+                                  ? "bg-red-500/20 text-red-300"
+                                  : "bg-green-500/20 text-green-300"
+                              }`}
+                            >
+                              {item.quantity}
+                            </span>
+                          </td>
+                          <td className="py-2.5 pr-4 text-white/80">
+                            {item.batchNumber ||
+                              item.medicine?.batchNumber ||
+                              "-"}
+                          </td>
+                          <td className="py-2.5 pr-4 hidden md:table-cell text-white/70">
+                            {item.expiryDate
+                              ? new Date(item.expiryDate).toLocaleDateString()
+                              : "-"}
+                          </td>
+                          <td className="py-2.5 pr-5">
+                            <span
+                              className={`px-2 py-1 rounded text-xs font-medium inline-block ${
+                                expiringSoon
+                                  ? "bg-orange-500/20 text-orange-300"
+                                  : "bg-blue-500/20 text-blue-300"
+                              }`}
+                            >
+                              {expiringSoon ? "Expiring" : "OK"}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+};
+
+export default InventoryPage;

@@ -6,18 +6,16 @@ export const createBranch = async (req, res) => {
   try {
     const branch = new Branch(req.body);
     await branch.save();
-    res
-      .status(201)
-      .json({ success: true, message: "Branch created successfully", branch });
+    res.status(201).json({ success: true, message: "Branch created", branch });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
   }
 };
 
-export const getBranches = async (req, res) => {
+export const getBranches = async (_req, res) => {
   try {
     const branches = await Branch.find();
-    res.status(200).json({ success: true, branches });
+    res.status(200).json(branches);
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
   }
@@ -45,9 +43,7 @@ export const updateBranch = async (req, res) => {
       return res
         .status(404)
         .json({ success: false, message: "Branch not found" });
-    res
-      .status(200)
-      .json({ success: true, message: "Branch updated successfully", branch });
+    res.status(200).json({ success: true, message: "Branch updated", branch });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
   }
@@ -60,9 +56,7 @@ export const deleteBranch = async (req, res) => {
       return res
         .status(404)
         .json({ success: false, message: "Branch not found" });
-    res
-      .status(200)
-      .json({ success: true, message: "Branch deleted successfully" });
+    res.status(200).json({ success: true, message: "Branch deleted" });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
   }
@@ -73,18 +67,16 @@ export const createStore = async (req, res) => {
   try {
     const store = new Store(req.body);
     await store.save();
-    res
-      .status(201)
-      .json({ success: true, message: "Store created successfully", store });
+    res.status(201).json({ success: true, message: "Store created", store });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
   }
 };
 
-export const getStores = async (req, res) => {
+export const getStores = async (_req, res) => {
   try {
     const stores = await Store.find();
-    res.status(200).json({ success: true, stores });
+    res.status(200).json(stores);
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
   }
@@ -112,9 +104,7 @@ export const updateStore = async (req, res) => {
       return res
         .status(404)
         .json({ success: false, message: "Store not found" });
-    res
-      .status(200)
-      .json({ success: true, message: "Store updated successfully", store });
+    res.status(200).json({ success: true, message: "Store updated", store });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
   }
@@ -127,9 +117,7 @@ export const deleteStore = async (req, res) => {
       return res
         .status(404)
         .json({ success: false, message: "Store not found" });
-    res
-      .status(200)
-      .json({ success: true, message: "Store deleted successfully" });
+    res.status(200).json({ success: true, message: "Store deleted" });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
   }

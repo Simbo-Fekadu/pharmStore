@@ -13,9 +13,17 @@ const medicineSchema = new mongoose.Schema(
     },
     category: {
       type: String,
-      enum: ["Tablet", "Capsule", "Syrup", "Injection", "Cream/Oint", "Others"],
+      enum: [
+        "Tablet",
+        "Capsule",
+        "Syrup",
+        "Injection",
+        "Cream/Oint",
+        "Others",
+        "Other",
+      ],
       required: true,
-      default: "Other",
+      default: "Others",
     },
     unit: {
       type: String,
@@ -24,8 +32,7 @@ const medicineSchema = new mongoose.Schema(
     batchNumber: {
       type: String,
       required: true,
-      unique: true,
-      default: "Not mentioned",
+      // uniqueness enforced via partial index below (ignores null/empty); no default so user must supply
     },
     expiryDate: {
       type: Date,
@@ -39,20 +46,33 @@ const medicineSchema = new mongoose.Schema(
       type: Number,
       required: true,
     },
+    quantity: {
+      type: Number,
+      required: false,
+      default: 0,
+      min: 0,
+    },
     sellingPrice: {
       type: Number,
-      required: true,
+      required: false,
     },
     supplier: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Supplier",
       required: false,
-      default: "Authorized Supplier",
     },
     createdBy: {
       type: String,
       required: true,
+      default: "system",
     },
+    isDeleted: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    deletedAt: { type: Date },
+    deletedBy: { type: String },
   },
 
   { timestamps: true }
@@ -65,6 +85,21 @@ medicineSchema.pre("save", function (next) {
   }
   next();
 });
+
+// Define index declaratively; migration in index.js ensures creation & legacy cleanup
+medicineSchema.index(
+  { batchNumber: 1, isDeleted: 1 },
+  {
+    name: "uniq_active_batchNumber",
+    unique: true,
+    partialFilterExpression: {
+      batchNumber: { $type: "string", $ne: "" },
+      isDeleted: false,
+    },
+  }
+);
+
+// Optional barcode uniqueness (ignore docs without a real barcode)
 
 const Medicine = mongoose.model("Medicine", medicineSchema);
 export default Medicine;

@@ -10,3 +10,10 @@ export const verifyToken = (req, res, next) => {
     next();
   });
 };
+
+export const requireAdmin = (req, _res, next) => {
+  if (!req.user || req.user.role !== "admin") {
+    return next(errorHandler(403, "Admin only"));
+  }
+  next();
+};
