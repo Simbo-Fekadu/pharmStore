@@ -17,3 +17,10 @@ export const requireAdmin = (req, _res, next) => {
   }
   next();
 };
+
+export const requireInventoryAccess = (req, _res, next) => {
+  if (!req.user || !["admin", "inventory_manager"].includes(req.user.role)) {
+    return next(errorHandler(403, "Inventory access required"));
+  }
+  next();
+};

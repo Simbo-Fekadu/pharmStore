@@ -18,6 +18,7 @@ import AdminBranches from "./components/AdminBranches";
 import BranchRequest from "./components/BranchRequest";
 import Fulfillment from "./components/Fulfillment";
 import AdminRequestCenter from "./components/AdminRequestCenter";
+import AdminTransactions from "./components/AdminTransactions";
 function App() {
   return (
     <Router>
@@ -38,6 +39,7 @@ function App() {
           <Route path="medicines/expired" element={<AdminExpired />} />
           <Route path="inventory/store" element={<AdminInventory />} />
           <Route path="inventory/branches" element={<AdminRequestCenter />} />
+          <Route path="transactions" element={<AdminTransactions />} />
           <Route path="users" element={<AdminUsers />} />
           <Route path="suppliers" element={<AdminSuppliers />} />
           <Route path="branches" element={<AdminBranches />} />

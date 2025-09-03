@@ -12,6 +12,7 @@ const links = [
   { to: "/admin/users", label: "Users" },
   { to: "/admin/suppliers", label: "Suppliers" },
   { to: "/admin/branches", label: "Branches" },
+  { to: "/admin/transactions", label: "Transactions" },
 ];
 
 const AdminLayout = () => {
