@@ -1,0 +1,1 @@
+MedicineQuickForm.jsx was removed on 2025-09-10 at user's request. The quick-add feature has been replaced by the dedicated page at /admin/medicines/add.

@@ -6,6 +6,7 @@ import Home from "./components/Home";
 import InventoryPage from "./components/InventoryPage";
 import AdminLayout from "./components/AdminLayout";
 import AdminMedicines from "./components/AdminMedicines";
+import AdminMedicineAdd from "./components/AdminMedicineAdd";
 import AdminActiveMedicines from "./components/AdminActiveMedicines";
 import AdminDashboard from "./components/AdminDashboard";
 import AdminMedicineTrash from "./components/AdminMedicineTrash";
@@ -33,6 +34,7 @@ function App() {
         <Route path="/admin" element={<AdminLayout />}>
           <Route index element={<AdminDashboard />} />
           <Route path="medicines" element={<AdminMedicines />} />
+          <Route path="medicines/add" element={<AdminMedicineAdd />} />
           <Route path="medicines/active" element={<AdminActiveMedicines />} />
           <Route path="medicines/trash" element={<AdminMedicineTrash />} />
           <Route path="medicines/near-expiry" element={<AdminNearExpiry />} />

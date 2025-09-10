@@ -16,13 +16,11 @@ export const signup = async (req, res, next) => {
   try {
     await newUser.save();
     const { password: _p, ...userSafe } = newUser._doc;
-    res
-      .status(201)
-      .json({
-        success: true,
-        message: "User created successfully",
-        user: userSafe,
-      });
+    res.status(201).json({
+      success: true,
+      message: "User created successfully",
+      user: userSafe,
+    });
   } catch (error) {
     next(error);
   }

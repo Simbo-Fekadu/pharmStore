@@ -1,5 +1,15 @@
-import { useEffect, useState, useCallback } from "react";
-import { Package, Clock, Skull, Trash2, BarChart3 } from "lucide-react";
+import { useEffect, useState, useCallback, useMemo } from "react";
+import {
+  Package,
+  Clock,
+  Skull,
+  Trash2,
+  BarChart3,
+  DollarSign,
+  Coins,
+  TrendingUp,
+  Tag,
+} from "lucide-react";
 const API = "http://localhost:3000/backend";
 
 // Dashboard with summary metrics
@@ -14,6 +24,10 @@ const AdminDashboard = () => {
   const [range, setRange] = useState("30"); // days window (kept for future trend integration)
   const [medicines, setMedicines] = useState([]);
   const [loading, setLoading] = useState(false);
+  const formatBirr = (v) =>
+    typeof v !== "number" || !isFinite(v)
+      ? "Br 0"
+      : `Br ${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -53,6 +67,48 @@ const AdminDashboard = () => {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Price metrics (derived from medicines)
+  const priceStats = useMemo(() => {
+    const meds = (medicines || []).filter((m) => !m.isDeleted);
+    const getQty = (m) =>
+      (m.remainingQuantity ?? m.initialQuantity ?? m.quantity ?? 0) * 1;
+    let totalUnits = 0;
+    let sellUnits = 0;
+    let costUnits = 0;
+    let valueSell = 0;
+    let valueCost = 0;
+    for (const m of meds) {
+      const q = Math.max(0, Number(getQty(m)) || 0);
+      totalUnits += q;
+      const sp = Number(m.sellingPrice);
+      const cp = Number(m.purchasePrice);
+      if (isFinite(sp) && sp > 0) {
+        sellUnits += q;
+        valueSell += q * sp;
+      }
+      if (isFinite(cp) && cp > 0) {
+        costUnits += q;
+        valueCost += q * cp;
+      }
+    }
+    const gross = Math.max(0, valueSell - valueCost);
+    const gmPct = valueSell > 0 ? Math.round((gross / valueSell) * 100) : 0;
+    const covSell =
+      totalUnits > 0 ? Math.round((sellUnits / totalUnits) * 100) : 0;
+    const covCost =
+      totalUnits > 0 ? Math.round((costUnits / totalUnits) * 100) : 0;
+    const avgSell = sellUnits > 0 ? valueSell / sellUnits : 0;
+    return {
+      valueSell,
+      valueCost,
+      gross,
+      gmPct,
+      covSell,
+      covCost,
+      avgSell,
+    };
+  }, [medicines]);
 
   // metric card helper constants removed after refactor
   const baseTotal = stats.total + stats.deleted;
@@ -121,6 +177,42 @@ const AdminDashboard = () => {
           label="In Trash"
           percent={pct(stats.deleted, baseTotal)}
           subtitle={`${pct(stats.deleted, baseTotal)}% of total incl. trash`}
+        />
+      </div>
+
+      {/* Price metrics */}
+      <div className="grid grid-cols-2 md:grid-cols-2 xl:grid-cols-4 gap-4 md:gap-6">
+        <MetricCard
+          icon={<DollarSign className="w-6 h-6" />}
+          iconColor="emerald"
+          value={formatBirr(priceStats.valueSell)}
+          label="Potential Inventory Value"
+          percent={priceStats.covSell}
+          subtitle={`${priceStats.covSell}% units priced (sell)`}
+        />
+        <MetricCard
+          icon={<Coins className="w-6 h-6" />}
+          iconColor="slate"
+          value={formatBirr(priceStats.valueCost)}
+          label="Inventory Cost (Est.)"
+          percent={priceStats.covCost}
+          subtitle={`${priceStats.covCost}% units priced (cost)`}
+        />
+        <MetricCard
+          icon={<TrendingUp className="w-6 h-6" />}
+          iconColor="amber"
+          value={formatBirr(priceStats.gross)}
+          label="Potential Gross Profit"
+          percent={priceStats.gmPct}
+          subtitle={`${priceStats.gmPct}% margin`}
+        />
+        <MetricCard
+          icon={<Tag className="w-6 h-6" />}
+          iconColor="emerald"
+          value={formatBirr(priceStats.avgSell)}
+          label="Avg Sell Price / Unit"
+          percent={priceStats.covSell}
+          subtitle={`${priceStats.covSell}% coverage`}
         />
       </div>
       {/* Charts (side by side on desktop) */}
