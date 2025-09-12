@@ -13,6 +13,7 @@ const AdminUsers = () => {
     email: "",
     password: "",
     branch: "", // single branch id
+    role: "employee", // allow admin creation here only
   });
   const [branches, setBranches] = useState([]);
   const [savingBranchUserId, setSavingBranchUserId] = useState(null); // user id currently updating branch
@@ -72,6 +73,7 @@ const AdminUsers = () => {
         email: form.email,
         password: form.password,
         branch: form.branch || undefined,
+        role: form.role || "employee",
       };
       const res = await fetch(`${API}/user`, {
         method: "POST",
@@ -84,7 +86,13 @@ const AdminUsers = () => {
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        setForm({ username: "", email: "", password: "", branch: "" });
+        setForm({
+          username: "",
+          email: "",
+          password: "",
+          branch: "",
+          role: "employee",
+        });
         load();
       } else setError(data.message || "Create failed");
     } catch {
@@ -201,7 +209,7 @@ const AdminUsers = () => {
         </h2>
         <form
           onSubmit={create}
-          className="mb-6 grid md:grid-cols-5 gap-3 text-xs md:text-sm"
+          className="mb-6 grid md:grid-cols-6 gap-3 text-xs md:text-sm"
         >
           <input
             name="username"
@@ -250,11 +258,24 @@ const AdminUsers = () => {
               );
             })}
           </div>
+          <select
+            name="role"
+            value={form.role}
+            onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
+            className="px-2 py-1.5 rounded bg-white/80 text-gray-800"
+          >
+            <option value="employee">Employee</option>
+            <option value="admin">Admin</option>
+          </select>
           <button
             disabled={creating}
             className="px-3 py-1.5 rounded bg-[var(--brand)] hover:bg-[var(--brand-hover)] text-white font-semibold disabled:opacity-60"
           >
-            {creating ? "Saving..." : "Add Employee"}
+            {creating
+              ? "Saving..."
+              : form.role === "admin"
+              ? "Add Admin"
+              : "Add Employee"}
           </button>
         </form>
         {loading ? (

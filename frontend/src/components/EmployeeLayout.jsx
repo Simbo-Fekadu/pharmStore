@@ -130,7 +130,10 @@ const EmployeeLayout = () => {
           <button
             onClick={() => {
               localStorage.removeItem("token");
-              navigate("/signin");
+              localStorage.removeItem("token");
+              localStorage.removeItem("role");
+              localStorage.removeItem("user");
+              navigate("/");
             }}
             aria-label="Logout"
             title="Logout"

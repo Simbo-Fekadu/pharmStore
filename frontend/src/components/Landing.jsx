@@ -1,188 +1,218 @@
 "use client";
 
 import { useNavigate } from "react-router-dom";
+import { useContext } from "react";
+import { ThemeContext } from "./ThemeProvider";
 import {
+  ArrowRight,
   Pill,
   Shield,
-  BarChart3,
   Users,
   Clock,
-  CheckCircle,
+  Package,
+  MessageSquare,
+  BarChart3,
 } from "lucide-react";
 
 const Landing = () => {
   const navigate = useNavigate();
-
+  const { theme, toggle } = useContext(ThemeContext);
   return (
-    <div className="min-h-screen">
-      {/* Hero Section */}
-      <div
-        className="min-h-screen flex items-center justify-center relative overflow-hidden px-4 sm:px-6 lg:px-8"
-        style={{ background: "var(--bg-start)" }}
-      >
-        {/* Background Pattern - Responsive positioning */}
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute top-10 left-4 sm:top-20 sm:left-20 w-16 h-16 sm:w-32 sm:h-32 rounded-full bg-white/20"></div>
-          <div className="absolute bottom-20 right-4 sm:bottom-32 sm:right-16 w-12 h-12 sm:w-24 sm:h-24 rounded-full bg-white/15"></div>
-          <div className="absolute top-1/2 right-1/4 sm:right-1/3 w-8 h-8 sm:w-16 sm:h-16 rounded-full bg-white/10"></div>
-        </div>
-
-        <div className="container mx-auto relative z-10 max-w-7xl">
-          <div className="flex flex-col lg:flex-row items-center justify-between gap-8 sm:gap-12 lg:gap-16">
-            {/* Left Content */}
-            <div className="flex-1 text-center lg:text-left w-full order-2 lg:order-1">
-              <div className="mb-6 sm:mb-8 w-full">
-                {/* Logo and Title */}
-                <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-4 mb-6 w-full justify-center lg:justify-start">
-                  <div className="p-2 sm:p-3 bg-white/20 rounded-full backdrop-blur-sm">
-                    <Pill className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
-                  </div>
-                  <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-extrabold text-white tracking-tight">
-                    PharmStore
-                  </h1>
-                </div>
-
-                {/* Description */}
-                <p className="text-sm sm:text-base md:text-lg lg:text-xl xl:text-2xl text-white/90 mb-6 sm:mb-8 leading-relaxed max-w-2xl mx-auto lg:mx-0">
-                  Revolutionary pharmacy inventory management system designed
-                  for modern healthcare professionals
-                </p>
-
-                {/* CTA Button */}
-                <div className="flex justify-center lg:justify-start">
-                  <button
-                    className="px-6 py-3 sm:px-8 sm:py-4 bg-transparent text-white rounded-lg font-semibold text-base sm:text-lg border border-white/30 hover:border-white hover:bg-white/10 focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-[#183D3D] transition duration-200 transform hover:scale-105"
-                    onClick={() => navigate("/signin")}
-                  >
-                    Sign In
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Right Content - Hero Image */}
-            <div className="flex-1 w-full max-w-md sm:max-w-lg lg:max-w-2xl xl:max-w-3xl mx-auto lg:mx-0 order-1 lg:order-2">
-              <div className="relative">
-                <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl shadow-2xl transition-all duration-700 hover:scale-[1.02] hover:shadow-3xl">
-                  <img
-                    src="src/images/pharm.jpg"
-                    alt="Modern Pharmacy Management"
-                    className="w-full h-56 sm:h-72 md:h-80 lg:h-96 xl:h-[28rem] object-cover transition-transform duration-700 hover:scale-105"
-                  />
-                  <div className="absolute -bottom-3 -right-3 sm:-bottom-4 sm:-right-4 bg-white text-[#183D3D] p-3 sm:p-4 rounded-xl shadow-2xl border border-gray-100 transition-all duration-300 hover:scale-110">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" />
-                      <span className="font-semibold text-xs sm:text-sm">
-                        99.9% Uptime
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+    <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-cyan-50/30 to-blue-50/20">
+      <header className="w-full px-6 py-6 flex items-center justify-between max-w-7xl mx-auto backdrop-blur-sm">
+        <div className="flex items-center gap-3 font-bold text-2xl tracking-tight">
+          <div className="p-2 bg-primary rounded-xl shadow-lg">
+            <Pill className="w-6 h-6 text-primary-foreground" />
           </div>
+          <span className="text-primary">PharmStore</span>
         </div>
-      </div>
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => navigate("/signin")}
+            className="px-6 py-2.5 text-sm font-semibold rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-all duration-200 shadow-md hover:shadow-lg"
+          >
+            Sign In
+          </button>
+          <button
+            onClick={() => navigate("/signup")}
+            className="px-6 py-2.5 text-sm font-semibold rounded-xl border-2 border-primary/20 hover:border-primary/40 bg-white/80 backdrop-blur-sm hover:bg-white transition-all duration-200"
+          >
+            Sign Up
+          </button>
+          <button
+            onClick={toggle}
+            aria-label="Toggle theme"
+            title={theme === "dark" ? "Switch to light" : "Switch to dark"}
+            className="p-2 rounded-xl border-2 border-primary/10 hover:border-primary/40 bg-white/80 dark:bg-white/10 backdrop-blur-sm transition-all"
+          >
+            {theme === "dark" ? (
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="w-5 h-5 text-yellow-400"
+              >
+                <circle cx="12" cy="12" r="4" />
+                <path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41M16.66 16.66l1.41 1.41M2 12h2m16 0h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+              </svg>
+            ) : (
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="w-5 h-5 text-slate-700"
+              >
+                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+              </svg>
+            )}
+          </button>
+        </div>
+      </header>
 
-      {/* Features Section */}
-      <div className="py-12 sm:py-16 lg:py-20 bg-white">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl">
-          {/* Section Header */}
-          <div className="text-center mb-12 sm:mb-16">
-            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-[#183D3D] mb-4">
-              Why Choose PharmStore?
-            </h2>
-            <p className="text-base sm:text-lg lg:text-xl text-gray-600 max-w-3xl mx-auto px-4">
-              Streamline your pharmacy operations with our comprehensive
-              inventory management solution
+      <main className="flex-1 flex items-center px-6 py-12">
+        <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-16 items-center">
+          <div className="space-y-8">
+            <div className="inline-flex items-center gap-2 px-4 py-2 bg-primary/10 text-primary rounded-full text-sm font-medium">
+              <Shield className="w-4 h-4" />
+              Trusted by 500+ pharmacies
+            </div>
+
+            <h1 className="text-5xl sm:text-6xl font-black leading-tight text-slate-900">
+              Simple pharmacy <span className="text-primary">inventory</span> &{" "}
+              <span className="text-secondary">branch request</span> management
+            </h1>
+
+            <p className="text-xl text-slate-600 leading-relaxed max-w-2xl">
+              Manage medicines, track branch requests, approve or reject stock
+              transfers, monitor near-expiry items, and chat across your team—
+              all in one minimal system.
             </p>
+
+            <div className="grid sm:grid-cols-2 gap-4 py-4">
+              <div className="flex items-center gap-3 p-4 bg-white/60 backdrop-blur-sm rounded-xl border border-slate-200/50">
+                <MessageSquare className="w-5 h-5 text-primary flex-shrink-0" />
+                <span className="text-slate-700 font-medium">
+                  Global team chat
+                </span>
+              </div>
+              <div className="flex items-center gap-3 p-4 bg-white/60 backdrop-blur-sm rounded-xl border border-slate-200/50">
+                <Package className="w-5 h-5 text-primary flex-shrink-0" />
+                <span className="text-slate-700 font-medium">
+                  Branch stock requests
+                </span>
+              </div>
+              <div className="flex items-center gap-3 p-4 bg-white/60 backdrop-blur-sm rounded-xl border border-slate-200/50">
+                <Shield className="w-5 h-5 text-primary flex-shrink-0" />
+                <span className="text-slate-700 font-medium">
+                  Central store validation
+                </span>
+              </div>
+              <div className="flex items-center gap-3 p-4 bg-white/60 backdrop-blur-sm rounded-xl border border-slate-200/50">
+                <Clock className="w-5 h-5 text-primary flex-shrink-0" />
+                <span className="text-slate-700 font-medium">
+                  Near-expiry tracking
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-4 pt-4">
+              <button
+                onClick={() => navigate("/signin")}
+                className="group relative overflow-hidden px-8 py-4 rounded-xl bg-primary text-primary-foreground font-semibold text-lg shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1"
+              >
+                <span className="absolute inset-0 bg-gradient-to-r from-primary via-cyan-600 to-primary opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                <span className="relative inline-flex items-center gap-3">
+                  Get Started{" "}
+                  <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                </span>
+              </button>
+              <button
+                onClick={() => navigate("/signup")}
+                className="px-8 py-4 rounded-xl font-semibold text-lg border-2 border-primary/20 bg-white/80 backdrop-blur-sm hover:bg-white hover:border-primary/40 transition-all duration-200 hover:shadow-lg"
+              >
+                Create Account
+              </button>
+            </div>
           </div>
 
-          {/* Features Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
-            {[
-              {
-                icon: <BarChart3 className="w-6 h-6 sm:w-8 sm:h-8" />,
-                title: "Real-time Analytics",
-                description:
-                  "Track inventory levels, sales trends, and expiration dates with powerful analytics dashboard",
-              },
-              {
-                icon: <Shield className="w-6 h-6 sm:w-8 sm:h-8" />,
-                title: "Secure & Compliant",
-                description:
-                  "HIPAA compliant with enterprise-grade security to protect sensitive pharmaceutical data",
-              },
-              {
-                icon: <Clock className="w-6 h-6 sm:w-8 sm:h-8" />,
-                title: "24/7 Monitoring",
-                description:
-                  "Automated alerts for low stock, expiring medications, and critical inventory updates",
-              },
-              {
-                icon: <Users className="w-6 h-6 sm:w-8 sm:h-8" />,
-                title: "Multi-user Access",
-                description:
-                  "Role-based access control for pharmacists, technicians, and administrative staff",
-              },
-              {
-                icon: <Pill className="w-6 h-6 sm:w-8 sm:h-8" />,
-                title: "Drug Database",
-                description:
-                  "Comprehensive medication database with NDC numbers, interactions, and dosage information",
-              },
-              {
-                icon: <CheckCircle className="w-6 h-6 sm:w-8 sm:h-8" />,
-                title: "Easy Integration",
-                description:
-                  "Seamlessly integrate with existing POS systems and insurance verification platforms",
-              },
-            ].map((feature, index) => (
-              <div key={index} className="group">
-                <div className="bg-gradient-to-br from-[#93B1A6]/10 to-[#5C8374]/10 p-6 sm:p-8 rounded-xl border border-[#93B1A6]/20 hover:shadow-lg transition duration-300 group-hover:scale-105 h-full">
-                  <div className="text-[#183D3D] mb-4 group-hover:text-[#5C8374] transition duration-300">
-                    {feature.icon}
+          <div className="relative">
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-secondary/5 rounded-3xl blur-3xl"></div>
+            <div className="relative p-8 rounded-3xl border border-slate-200/50 bg-white/80 backdrop-blur-sm shadow-2xl space-y-6">
+              <div className="flex items-center gap-3 mb-6">
+                <BarChart3 className="w-6 h-6 text-primary" />
+                <span className="text-lg font-bold text-slate-900">
+                  System Overview
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-4 bg-gradient-to-br from-primary/10 to-primary/5 rounded-2xl border border-primary/20">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Package className="w-4 h-4 text-primary" />
+                    <span className="font-bold text-slate-900">Requests</span>
                   </div>
-                  <h3 className="text-lg sm:text-xl font-semibold text-[#183D3D] mb-3">
-                    {feature.title}
-                  </h3>
-                  <p className="text-sm sm:text-base text-gray-600 leading-relaxed">
-                    {feature.description}
-                  </p>
+                  <div className="flex gap-2 text-xs">
+                    <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded-full">
+                      Pending
+                    </span>
+                    <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full">
+                      Approved
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-4 bg-gradient-to-br from-secondary/10 to-secondary/5 rounded-2xl border border-secondary/20">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Pill className="w-4 h-4 text-secondary" />
+                    <span className="font-bold text-slate-900">Medicines</span>
+                  </div>
+                  <span className="text-xs text-slate-600">
+                    Near expiry tracking
+                  </span>
+                </div>
+
+                <div className="p-4 bg-gradient-to-br from-blue-100/50 to-blue-50 rounded-2xl border border-blue-200/50">
+                  <div className="flex items-center gap-2 mb-2">
+                    <MessageSquare className="w-4 h-4 text-blue-600" />
+                    <span className="font-bold text-slate-900">Chat</span>
+                  </div>
+                  <span className="text-xs text-slate-600">
+                    Real-time polling
+                  </span>
+                </div>
+
+                <div className="p-4 bg-gradient-to-br from-purple-100/50 to-purple-50 rounded-2xl border border-purple-200/50">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Users className="w-4 h-4 text-purple-600" />
+                    <span className="font-bold text-slate-900">Suppliers</span>
+                  </div>
+                  <span className="text-xs text-slate-600">Manage sources</span>
                 </div>
               </div>
-            ))}
+
+              <div className="pt-4 border-t border-slate-200/50">
+                <p className="text-sm text-slate-600 text-center font-medium">
+                  Focused feature set—no bloated extras.
+                </p>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      </main>
 
-      {/* CTA Section */}
-      <div
-        className="py-12 sm:py-16 lg:py-20 relative overflow-hidden px-4 sm:px-6 lg:px-8"
-        style={{ background: "var(--bg-start)" }}
-      >
-        <div className="container mx-auto text-center relative z-10 max-w-4xl">
-          <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-white mb-4 sm:mb-6">
-            Ready to Transform Your Pharmacy?
-          </h2>
-          <p className="text-base sm:text-lg lg:text-xl text-white/90 mb-6 sm:mb-8 leading-relaxed px-4">
-            Join thousands of pharmacies already using PharmStore to streamline
-            their operations and improve patient care.
-          </p>
-          <div className="flex justify-center">
-            <button
-              className="px-6 py-3 sm:px-8 sm:py-4 bg-transparent text-white rounded-lg font-semibold text-base sm:text-lg border border-white/30 hover:border-white hover:bg-white/10 focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-[#183D3D] transition duration-200 transform hover:scale-105"
-              onClick={() => navigate("/signin")}
-            >
-              Sign In
-            </button>
-          </div>
+      <footer className="px-6 py-8 text-center text-sm text-slate-500 border-t border-slate-200/50 bg-white/50 backdrop-blur-sm">
+        <div className="max-w-7xl mx-auto">
+          © {new Date().getFullYear()} PharmStore. Internal demo interface.
         </div>
-
-        {/* Background Elements - Responsive positioning */}
-        <div className="absolute top-4 left-4 sm:top-10 sm:left-10 w-12 h-12 sm:w-20 sm:h-20 rounded-full bg-white/10"></div>
-        <div className="absolute bottom-4 right-4 sm:bottom-10 sm:right-10 w-16 h-16 sm:w-32 sm:h-32 rounded-full bg-white/5"></div>
-      </div>
+      </footer>
     </div>
   );
 };

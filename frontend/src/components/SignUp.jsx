@@ -8,7 +8,6 @@ const SignUp = () => {
     username: "",
     email: "",
     password: "",
-    role: "employee",
   });
   const [message, setMessage] = useState("");
   const [isError, setIsError] = useState(false);
@@ -28,7 +27,7 @@ const SignUp = () => {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, role: "employee" }),
       });
       const data = await res.json();
       if (res.ok && data.success) {
@@ -99,17 +98,7 @@ const SignUp = () => {
             />
           </div>
 
-          <div>
-            <select
-              name="role"
-              value={form.role}
-              onChange={handleChange}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-700 text-sm"
-            >
-              <option value="employee">Employee</option>
-              <option value="admin">Admin</option>
-            </select>
-          </div>
+          {/* Role selection removed: all signups become employees */}
 
           <button
             type="submit"
