@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { getApiBase } from "../api/base";
 
 const Home = () => {
   const navigate = useNavigate();
@@ -18,7 +19,7 @@ const Home = () => {
       try {
         const params = new URLSearchParams({ locationType, locationId });
         const res = await fetch(
-          `http://localhost:3000/backend/inventory?${params.toString()}`,
+          `${getApiBase()}/backend/inventory?${params.toString()}`,
           { credentials: "include" }
         );
         const data = await res.json();

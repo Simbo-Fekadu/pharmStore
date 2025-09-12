@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { ChevronDown, ChevronRight, Search, Filter } from "lucide-react";
 
-const API = "http://localhost:3000/backend";
+import { getApiBase } from "../api/base";
+const API = getApiBase() + "/backend";
 
 // Branch medicine list styled like AdminMedicines (read-only subset)
 const BranchMedicines = () => {

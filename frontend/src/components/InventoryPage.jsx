@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import InventoryForm from "./InventoryForm";
+import { getApiBase } from "../api/base";
 
 const InventoryPage = () => {
   const [inventory, setInventory] = useState([]);
@@ -14,7 +15,7 @@ const InventoryPage = () => {
     try {
       const params = new URLSearchParams({ locationType, locationId });
       const res = await fetch(
-        `http://localhost:3000/backend/inventory?${params.toString()}`,
+        `${getApiBase()}/backend/inventory?${params.toString()}`,
         { credentials: "include" }
       );
       const data = await res.json();

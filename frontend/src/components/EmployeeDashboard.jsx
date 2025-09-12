@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Package, Clock, Skull, Trash2, BarChart3 } from "lucide-react";
-const API = "http://localhost:3000/backend";
+import { getApiBase } from "../api/base";
+const API = getApiBase() + "/backend";
 
 // Employee dashboard = Admin dashboard minus price metrics
 const EmployeeDashboard = () => {

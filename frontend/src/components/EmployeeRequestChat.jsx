@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "react-router-dom";
 
-const API = "http://localhost:3000/backend";
+import { getApiBase } from "../api/base";
+const API = getApiBase() + "/backend";
 
 const EmployeeRequestChat = () => {
   const { id } = useParams();

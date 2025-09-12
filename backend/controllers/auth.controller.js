@@ -22,6 +22,23 @@ export const signup = async (req, res, next) => {
       user: userSafe,
     });
   } catch (error) {
+    // Duplicate key error (Mongo / Mongoose)
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyPattern || {})[0] || "field";
+      return res.status(409).json({
+        success: false,
+        statusCode: 409,
+        message: `${field} already exists`,
+      });
+    }
+    // Mongoose validation error
+    if (error.name === "ValidationError") {
+      return res.status(400).json({
+        success: false,
+        statusCode: 400,
+        message: error.message,
+      });
+    }
     next(error);
   }
 };

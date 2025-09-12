@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
+import { getApiBase } from "../api/base";
 
-// TODO: move to env variable (e.g. import.meta.env.VITE_API_BASE)
-const API = "http://localhost:3000/backend";
+const API = `${getApiBase()}/backend`;
 
 const initialForm = {
   medicineId: "",

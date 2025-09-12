@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
-const API = "http://localhost:3000/backend";
+import { getApiBase } from "../api/base";
+const API = getApiBase() + "/backend";
 
 const BranchRequest = () => {
   const [medicines, setMedicines] = useState([]);

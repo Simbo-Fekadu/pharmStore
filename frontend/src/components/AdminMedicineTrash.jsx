@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { RotateCcw, Flame, FileX2, Skull, Trash2 } from "lucide-react";
 
-const API = "http://localhost:3000/backend";
+import { getApiBase } from "../api/base";
+const API = getApiBase() + "/backend";
 
 const AdminMedicineTrash = () => {
   const [deletedList, setDeletedList] = useState([]);

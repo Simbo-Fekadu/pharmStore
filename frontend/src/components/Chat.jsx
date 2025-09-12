@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 
-const API = "http://localhost:3000/backend";
+import { getApiBase } from "../api/base";
+const API = getApiBase() + "/backend";
 
 // Shared chat component for both admin and employee
 const Chat = () => {

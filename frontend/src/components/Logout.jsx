@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { getApiBase } from "../api/base";
 
 const Logout = () => {
   const navigate = useNavigate();
@@ -11,7 +12,7 @@ const Logout = () => {
     setIsError(false);
     try {
       localStorage.removeItem("token");
-      const res = await fetch("http://localhost:3000/backend/auth/signout", {
+      const res = await fetch(`${getApiBase()}/backend/auth/signout`, {
         method: "POST",
         credentials: "include",
       });
@@ -23,7 +24,7 @@ const Logout = () => {
         setMessage(data.message || "Logout failed");
         setIsError(true);
       }
-    } catch (err) {
+    } catch {
       setMessage("Error connecting to server");
       setIsError(true);
     }

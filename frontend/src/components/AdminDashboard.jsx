@@ -11,7 +11,8 @@ import {
   TrendingUp,
   Tag,
 } from "lucide-react";
-const API = "http://localhost:3000/backend";
+import { getApiBase } from "../api/base";
+const API = getApiBase() + "/backend";
 
 // Dashboard with summary metrics
 const AdminDashboard = () => {

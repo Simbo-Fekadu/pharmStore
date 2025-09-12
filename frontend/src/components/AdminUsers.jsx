@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Trash2, Edit3, Save, X } from "lucide-react";
-const API = "http://localhost:3000/backend";
+import { getApiBase } from "../api/base";
+const API = getApiBase() + "/backend";
 
 // Updated to single branch assignment (legacy multi-branch support removed)
 const AdminUsers = () => {

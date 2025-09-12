@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { ChevronDown, ChevronRight, Search, Filter } from "lucide-react";
 
-const API = "http://localhost:3000/backend";
+import { getApiBase } from "../api/base";
+const API = getApiBase() + "/backend";
 
 const EmployeeMedicines = () => {
   const sortByRecent = (arr) =>

@@ -10,7 +10,8 @@ import {
   Filter,
 } from "lucide-react";
 
-const API = "http://localhost:3000/backend";
+import { getApiBase } from "../api/base";
+const API = getApiBase() + "/backend";
 
 const AdminMedicines = () => {
   // Helper: sort medicines by most recent first

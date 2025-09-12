@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Skull } from "lucide-react";
-const API = "http://localhost:3000/backend";
+import { getApiBase } from "../api/base";
+const API = getApiBase() + "/backend";
 
 const AdminExpired = () => {
   const [list, setList] = useState([]);

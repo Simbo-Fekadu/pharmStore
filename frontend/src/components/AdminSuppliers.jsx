@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Edit3, Save, X, Trash2 } from "lucide-react";
-const API = "http://localhost:3000/backend";
+import { getApiBase } from "../api/base";
+const API = getApiBase() + "/backend";
 
 const empty = { supplierName: "", phoneNumber: "", address: "" };
 
