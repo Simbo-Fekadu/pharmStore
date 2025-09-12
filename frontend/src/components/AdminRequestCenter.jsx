@@ -2,16 +2,16 @@ import { useEffect, useState, useCallback } from "react";
 
 const API = "http://localhost:3000/backend";
 
-// Admin request center: list branch requests and chat / approve / reject
 const AdminRequestCenter = () => {
   const [requests, setRequests] = useState([]);
   const [activeId, setActiveId] = useState(null);
   const [activeRequest, setActiveRequest] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [msgText, setMsgText] = useState("");
-  const [storeId, setStoreId] = useState(""); // admin selects store to fulfill
+  // loading state removed (chat thread polling removed)
+  // Chat removed: no longer using per-request embedded chat UI
   const [note, setNote] = useState("");
   const [tab, setTab] = useState("Pending");
+  const [centralStock, setCentralStock] = useState(null);
+  const [approveError, setApproveError] = useState("");
 
   const loadRequests = useCallback(async () => {
     try {
@@ -19,20 +19,38 @@ const AdminRequestCenter = () => {
       const data = await res.json();
       if (res.ok && data.success) setRequests(data.requests || []);
     } catch {
-      // ignore load error
+      /* ignore load error */
     }
   }, []);
 
   const loadOne = useCallback(async (id) => {
-    setLoading(true);
     try {
       const res = await fetch(`${API}/inventory/request/${id}`);
       const data = await res.json();
       if (res.ok && data.success) setActiveRequest(data.request);
+      // After loading the request, fetch central stock for its medicine
+      const medId = data?.request?.medicine?._id || data?.request?.medicine;
+      if (medId) {
+        try {
+          const sRes = await fetch(
+            `${API}/inventory/stock?locationId=main&medicineId=${medId}`
+          );
+          const sData = await sRes.json();
+          if (sRes.ok && sData.success) {
+            const bal = sData.balances?.[0];
+            setCentralStock(bal ? bal.onHandQty : 0);
+          } else {
+            setCentralStock(null);
+          }
+        } catch {
+          setCentralStock(null);
+        }
+      } else {
+        setCentralStock(null);
+      }
     } catch {
-      // ignore single load error
+      /* ignore single request load error */
     }
-    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -41,8 +59,6 @@ const AdminRequestCenter = () => {
   useEffect(() => {
     if (activeId) loadOne(activeId);
   }, [activeId, loadOne]);
-
-  // simple polling for chat freshness
   useEffect(() => {
     const t = setInterval(() => {
       if (activeId) loadOne(activeId);
@@ -50,25 +66,34 @@ const AdminRequestCenter = () => {
     return () => clearInterval(t);
   }, [activeId, loadOne]);
 
-  const sendMessage = async () => {
-    if (!msgText.trim() || !activeId) return;
-    const text = msgText.trim();
-    setMsgText("");
-    await fetch(`${API}/inventory/request/${activeId}/message`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sender: "admin", text }),
-    });
-    loadOne(activeId);
+  const authHeaders = () => {
+    const token = localStorage.getItem("token");
+    return {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
   };
 
+  // sendMessage removed
+
   const approve = async () => {
-    if (!activeId || !storeId) return;
+    if (!activeId) return;
+    setApproveError("");
     await fetch(`${API}/inventory/request/${activeId}/approve`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ storeId }),
-    });
+      headers: authHeaders(),
+      credentials: "include",
+      body: JSON.stringify({}),
+    })
+      .then(async (r) => {
+        if (!r.ok) {
+          const j = await r.json().catch(() => ({}));
+          setApproveError(j.message || `Approve failed (${r.status})`);
+        } else {
+          setApproveError("");
+        }
+      })
+      .catch(() => setApproveError("Network error attempting approve"));
     await loadRequests();
     loadOne(activeId);
   };
@@ -77,7 +102,8 @@ const AdminRequestCenter = () => {
     if (!activeId) return;
     await fetch(`${API}/inventory/request/${activeId}/reject`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders(),
+      credentials: "include",
       body: JSON.stringify({ note }),
     });
     setNote("");
@@ -160,7 +186,7 @@ const AdminRequestCenter = () => {
       <div className="lg:flex-1 flex flex-col bg-white/10 border border-white/10 rounded-xl backdrop-blur min-h-[60vh]">
         {!activeRequest && (
           <div className="m-auto text-white/60 text-sm p-8 text-center">
-            Select a request to review & chat.
+            Select a request to review.
           </div>
         )}
         {activeRequest && (
@@ -179,12 +205,6 @@ const AdminRequestCenter = () => {
               <div className="ml-auto flex items-center gap-2">
                 {activeRequest.status === "Pending" && (
                   <>
-                    <input
-                      placeholder="Store ID"
-                      value={storeId}
-                      onChange={(e) => setStoreId(e.target.value)}
-                      className="px-2 py-1 rounded bg-white/20 text-xs"
-                    />
                     <button
                       onClick={approve}
                       className="px-3 py-1.5 text-xs rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 font-semibold"
@@ -201,31 +221,80 @@ const AdminRequestCenter = () => {
                 )}
               </div>
             </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              {activeRequest.messages?.length === 0 && (
-                <div className="text-xs text-white/50">No messages yet.</div>
-              )}
-              {activeRequest.messages?.map((m, i) => (
-                <div
-                  key={i}
-                  className={`max-w-[70%] rounded-lg px-3 py-2 text-xs leading-relaxed shadow ${
-                    m.sender === "admin"
-                      ? "ml-auto bg-[var(--brand)] text-white"
-                      : "bg-white/10 text-white/80"
-                  }`}
-                >
-                  <div className="font-semibold mb-0.5 text-[10px] opacity-75">
-                    {m.sender}
+            <div className="flex flex-col gap-6 flex-1 overflow-auto p-4">
+              <div className="w-full lg:w-1/3 border border-white/10 p-4 space-y-3 rounded-lg bg-white/5 overflow-y-auto">
+                <h3 className="text-sm font-semibold">Request Details</h3>
+                <div className="text-xs space-y-1 text-white/70">
+                  <div>
+                    <span className="text-white/40">Medicine: </span>
+                    {activeRequest.medicine?.medicineName}
                   </div>
-                  <div>{m.text}</div>
-                  <div className="text-[9px] mt-1 opacity-50">
-                    {new Date(m.createdAt).toLocaleTimeString()}
+                  {centralStock !== null && (
+                    <div>
+                      <span className="text-white/40">Central Stock: </span>
+                      {centralStock}
+                      {activeRequest.status === "Pending" && (
+                        <span
+                          className={`ml-2 text-[10px] px-1.5 py-0.5 rounded ${
+                            centralStock >= activeRequest.quantity
+                              ? "bg-emerald-500/20 text-emerald-300"
+                              : "bg-rose-500/20 text-rose-300"
+                          }`}
+                        >
+                          {centralStock >= activeRequest.quantity
+                            ? "OK"
+                            : "LOW"}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  <div>
+                    <span className="text-white/40">Brand: </span>
+                    {activeRequest.medicine?.brand || "—"}
                   </div>
+                  <div>
+                    <span className="text-white/40">Category: </span>
+                    {activeRequest.medicine?.category || "—"}
+                  </div>
+                  <div>
+                    <span className="text-white/40">Quantity: </span>
+                    {activeRequest.quantity}
+                  </div>
+                  <div>
+                    <span className="text-white/40">Batch: </span>
+                    {activeRequest.batchNumber ||
+                      activeRequest.medicine?.batchNumber ||
+                      "—"}
+                  </div>
+                  <div>
+                    <span className="text-white/40">Reason: </span>
+                    {activeRequest.reason || "—"}
+                  </div>
+                  <div>
+                    <span className="text-white/40">Created: </span>
+                    {new Date(activeRequest.createdAt).toLocaleString()}
+                  </div>
+                  {activeRequest.fulfilledAt && (
+                    <div>
+                      <span className="text-white/40">Fulfilled: </span>
+                      {new Date(activeRequest.fulfilledAt).toLocaleString()}
+                    </div>
+                  )}
+                  {activeRequest.approvedByUserId && (
+                    <div>
+                      <span className="text-white/40">Approved By: </span>
+                      {activeRequest.approvedByUserId.username ||
+                        activeRequest.approvedByUserId}
+                    </div>
+                  )}
+                  {activeRequest.rejectionNote && (
+                    <div className="text-rose-300">
+                      <span className="text-white/40">Note: </span>
+                      {activeRequest.rejectionNote}
+                    </div>
+                  )}
                 </div>
-              ))}
-              {loading && (
-                <div className="text-xs text-white/40">Loading...</div>
-              )}
+              </div>
             </div>
             {activeRequest.status === "Rejected" &&
               activeRequest.rejectionNote && (
@@ -233,26 +302,12 @@ const AdminRequestCenter = () => {
                   Rejection Note: {activeRequest.rejectionNote}
                 </div>
               )}
-            <div className="p-3 border-t border-white/10 flex items-center gap-2">
-              <input
-                placeholder="Type a message"
-                value={msgText}
-                onChange={(e) => setMsgText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    sendMessage();
-                  }
-                }}
-                className="flex-1 px-3 py-2 rounded bg-white/20 text-xs"
-              />
-              <button
-                onClick={sendMessage}
-                className="px-3 py-2 rounded bg-[var(--brand)] hover:bg-[var(--brand-hover)] text-xs font-semibold"
-              >
-                Send
-              </button>
-            </div>
+            {approveError && (
+              <div className="px-4 pb-2 text-[11px] text-rose-300">
+                {approveError}
+              </div>
+            )}
+            {/* Chat input removed */}
             {activeRequest.status === "Pending" && (
               <div className="px-4 pb-3 flex items-center gap-2">
                 <input

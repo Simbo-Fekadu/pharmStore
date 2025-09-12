@@ -13,6 +13,10 @@ const requestSchema = new mongoose.Schema(
       required: true,
     },
     quantity: { type: Number, required: true, min: 1 },
+    createdByUserId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
     batchNumber: { type: String },
     status: {
       type: String,
@@ -22,6 +26,7 @@ const requestSchema = new mongoose.Schema(
     reason: { type: String },
     rejectionNote: { type: String },
     fulfilledAt: { type: Date },
+    approvedByUserId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     // Simple chat-style message thread between branch (employee) and admin
     messages: [
       {

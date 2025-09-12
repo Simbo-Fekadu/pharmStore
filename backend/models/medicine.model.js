@@ -19,6 +19,7 @@ const medicineSchema = new mongoose.Schema(
         "Syrup",
         "Injection",
         "Cream/Oint",
+        "Cosmetics",
         "Others",
         "Other",
       ],
@@ -78,22 +79,26 @@ const medicineSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Set sellingPrice to 1.25 * purchasePrice if not provided
+// Set sellingPrice to default margin if not provided
+// Cosmetics => 35% margin (1.35x), others => 25% margin (1.25x)
 medicineSchema.pre("save", function (next) {
   if (this.sellingPrice == null) {
-    this.sellingPrice = this.purchasePrice * 1.25;
+    const factor = this.category === "Cosmetics" ? 1.35 : 1.25;
+    this.sellingPrice = this.purchasePrice * factor;
   }
   next();
 });
 
-// Define index declaratively; migration in index.js ensures creation & legacy cleanup
+// Unique per supplier: allow the same batchNumber if supplier differs
+// Partial filter ensures we only enforce when supplier exists and doc is active
 medicineSchema.index(
-  { batchNumber: 1, isDeleted: 1 },
+  { batchNumber: 1, supplier: 1, isDeleted: 1 },
   {
-    name: "uniq_active_batchNumber",
+    name: "uniq_batch_per_supplier",
     unique: true,
     partialFilterExpression: {
       batchNumber: { $type: "string", $ne: "" },
+      supplier: { $type: "objectId" },
       isDeleted: false,
     },
   }

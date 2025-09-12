@@ -111,16 +111,79 @@ export const postLedger = async (req, res, next) => {
 
 export const getStock = async (req, res, next) => {
   try {
-    const { locationId, medicineId, includeZero } = req.query;
+    let { locationId, medicineId, includeZero } = req.query;
+    // Support friendly alias 'main' to mean the first / central store
+    if (locationId === "main") {
+      const store = await Store.findOne().select("_id").lean();
+      if (!store) {
+        return res
+          .status(400)
+          .json({ success: false, message: "No central store configured" });
+      }
+      locationId = store._id.toString();
+    }
     const filter = {};
     if (locationId) filter.locationId = locationId;
     if (medicineId) filter.medicineId = medicineId;
     if (!includeZero) filter.onHandQty = { $gt: 0 };
 
-    const balances = await StockBalance.find(filter)
-      .populate("medicineId", "name strength form")
+    let balances = await StockBalance.find(filter)
+      .populate(
+        "medicineId",
+        "medicineName brand category purchasePrice sellingPrice supplier batchNumber"
+      )
       .populate("locationId", "name")
       .lean();
+
+    // Fallback: if central store queried for specific medicine and no balance doc yet, derive from ledger net
+    if (
+      balances.length === 0 &&
+      locationId &&
+      medicineId &&
+      mongoose.Types.ObjectId.isValid(locationId) &&
+      mongoose.Types.ObjectId.isValid(medicineId)
+    ) {
+      const net = await StockLedger.aggregate([
+        {
+          $match: {
+            locationId: new mongoose.Types.ObjectId(locationId),
+            medicineId: new mongoose.Types.ObjectId(medicineId),
+          },
+        },
+        { $group: { _id: "$medicineId", qty: { $sum: "$quantity" } } },
+      ]);
+      if (net.length && net[0].qty > 0) {
+        const med = await Medicine.findById(medicineId).lean();
+        const loc = await Store.findById(locationId).lean();
+        if (med && loc) {
+          balances.push({
+            _id: `${medicineId}-${locationId}-synthetic`,
+            medicineId: med,
+            locationId: { _id: loc._id, name: loc.name },
+            onHandQty: net[0].qty,
+            synthetic: true,
+          });
+        }
+      } else {
+        // Second fallback: legacy medicine.quantity field for central store stock (pre-ledger data)
+        const med = await Medicine.findById(medicineId).lean();
+        const loc = await Store.findById(locationId).lean();
+        if (
+          med &&
+          loc &&
+          typeof med.quantity === "number" &&
+          med.quantity > 0
+        ) {
+          balances.push({
+            _id: `${medicineId}-${locationId}-legacy`,
+            medicineId: med,
+            locationId: { _id: loc._id, name: loc.name },
+            onHandQty: med.quantity,
+            legacy: true,
+          });
+        }
+      }
+    }
     res.json({ success: true, count: balances.length, balances });
   } catch (err) {
     next(err);
@@ -380,11 +443,31 @@ export const upsertInventory = async (req, res, next) => {
 export const getInventory = async (req, res, next) => {
   try {
     const { locationType, locationId } = req.query;
-    const inventory = await Inventory.find({
-      locationType,
-      locationId,
-    }).populate("medicine");
-    res.status(200).json({ success: true, inventory });
+    let resolvedLocationId = locationId;
+    // Allow a friendly alias ("main") or attempt graceful handling of a non ObjectId
+    if (resolvedLocationId) {
+      const valid = mongoose.Types.ObjectId.isValid(resolvedLocationId);
+      if (!valid) {
+        if (resolvedLocationId === "main") {
+          const store = await Store.findOne().select("_id").lean();
+          if (!store) {
+            return res
+              .status(400)
+              .json({ success: false, message: "No store configured yet" });
+          }
+          resolvedLocationId = store._id.toString();
+        } else {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid locationId format",
+          });
+        }
+      }
+    }
+    const query = { locationType };
+    if (resolvedLocationId) query.locationId = resolvedLocationId;
+    const inventory = await Inventory.find(query).populate("medicine");
+    res.status(200).json({ success: true, inventory, resolvedLocationId });
   } catch (error) {
     next(error);
   }
@@ -491,22 +574,111 @@ export const transferMedicine = async (req, res, next) => {
 // Branch requests medicine from central store
 export const createRequest = async (req, res) => {
   try {
-    const { medicineId, branchId, quantity, batchNumber, reason } = req.body;
-    if (!medicineId || !branchId || !quantity)
+    const { medicineId, quantity, batchNumber, reason } = req.body;
+    // Branch resolved from authenticated user (employee)
+    let branchId = req.user?.branch || req.body.branchId; // fallback for legacy
+    if (!branchId && req.user?.id) {
+      // Attempt to load user and derive branch (including legacy array)
+      try {
+        const User = (await import("../models/user.model.js")).default;
+        const uDoc = await User.findById(req.user.id).lean();
+        if (uDoc) {
+          if (uDoc.branch) branchId = uDoc.branch.toString();
+          else if (Array.isArray(uDoc.branches) && uDoc.branches.length === 1) {
+            branchId = uDoc.branches[0].toString();
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    if (!medicineId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "medicineId required" });
+    }
+    if (!branchId) {
       return res.status(400).json({
         success: false,
-        message: "medicineId, branchId, quantity required",
+        message:
+          "No branch associated with user session. Please re-login or contact admin to assign a branch.",
+        code: "NO_BRANCH",
       });
+    }
+    if (!quantity) {
+      return res
+        .status(400)
+        .json({ success: false, message: "quantity required" });
+    }
+    // Validate branch & medicine existence
+    const [medicine, branch] = await Promise.all([
+      Medicine.findById(medicineId).populate("supplier"),
+      Branch.findById(branchId),
+    ]);
+    if (!medicine || !branch) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid medicine or branch" });
+    }
+    // Central store stock check (prevent requesting more than available if we want strict limit)
+    const centralStore = await Store.findOne();
+    let available = 0;
+    if (centralStore) {
+      const bal = await StockBalance.findOne({
+        medicineId: medicine._id,
+        locationId: centralStore._id,
+      });
+      available = bal?.onHandQty || 0;
+    }
+    if (Number(quantity) > available && available > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Quantity exceeds available central stock (${available})`,
+        available,
+      });
+    }
+    const createdByUserId = req.user?.id; // may be undefined if unauthenticated
     const request = await Request.create({
       medicine: medicineId,
       branch: branchId,
       quantity,
       batchNumber,
       reason,
+      createdByUserId,
     });
     res
       .status(201)
       .json({ success: true, message: "Request created", request });
+  } catch (e) {
+    res.status(400).json({ success: false, message: e.message });
+  }
+};
+
+// List medicines belonging to (transferred to) a branch based on StockBalance
+export const getBranchMedicines = async (req, res) => {
+  try {
+    const { branchId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(branchId)) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid branchId" });
+    }
+    const balances = await StockBalance.find({ locationId: branchId })
+      .populate("medicineId")
+      .lean();
+    const items = balances.map((b) => ({
+      _id: b._id,
+      medicineId: b.medicineId?._id,
+      name: b.medicineId?.medicineName,
+      brand: b.medicineId?.brand,
+      category: b.medicineId?.category,
+      supplier: b.medicineId?.supplier,
+      purchasePrice: b.medicineId?.purchasePrice,
+      sellingPrice: b.medicineId?.sellingPrice,
+      batchNumber: b.medicineId?.batchNumber,
+      quantity: b.onHandQty || 0,
+    }));
+    res.json({ success: true, count: items.length, medicines: items });
   } catch (e) {
     res.status(400).json({ success: false, message: e.message });
   }
@@ -517,6 +689,7 @@ export const listRequests = async (_req, res) => {
     const requests = await Request.find()
       .populate("medicine")
       .populate("branch")
+      .populate("approvedByUserId", "username role")
       .sort({ createdAt: -1 });
     res.status(200).json({ success: true, requests });
   } catch (e) {
@@ -529,7 +702,8 @@ export const getRequest = async (req, res) => {
     const { id } = req.params;
     const request = await Request.findById(id)
       .populate("medicine")
-      .populate("branch");
+      .populate("branch")
+      .populate("approvedByUserId", "username role");
     if (!request)
       return res
         .status(404)
@@ -577,21 +751,74 @@ export const approveRequest = async (req, res) => {
       return res
         .status(400)
         .json({ success: false, message: "Request already processed" });
-    // Ledger-based transfer: out from store, in to branch
-    const { storeId } = req.body;
-    if (!storeId)
+    // Determine central store automatically (first store document) instead of requiring storeId from client
+    const centralStore = await Store.findOne();
+    if (!centralStore)
       return res
         .status(400)
-        .json({ success: false, message: "storeId required to fulfill" });
+        .json({ success: false, message: "No central store configured" });
+    const storeId = centralStore._id;
     // Prevent negative with balance check
-    const sourceBal = await StockBalance.findOne({
+    let sourceBal = await StockBalance.findOne({
       medicineId: request.medicine,
       locationId: storeId,
     });
-    if (!sourceBal || (sourceBal.onHandQty || 0) < request.quantity) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Insufficient central stock" });
+    let available = sourceBal?.onHandQty || 0;
+    // Extended fallback chain:
+    // 1. If no StockBalance doc, derive net from ledger history
+    // 2. If ledger net zero, try legacy Inventory doc
+    // 3. If still zero, try legacy Medicine.quantity (pre-migration)
+    if (!sourceBal) {
+      const net = await StockLedger.aggregate([
+        {
+          $match: {
+            locationId: storeId,
+            medicineId: request.medicine,
+          },
+        },
+        { $group: { _id: "$medicineId", qty: { $sum: "$quantity" } } },
+      ]);
+      if (net.length) available = net[0].qty || 0;
+      if (available <= 0) {
+        const legacyInv = await Inventory.findOne({
+          medicine: request.medicine,
+          locationType: "Store",
+          locationId: storeId,
+        });
+        if (legacyInv && legacyInv.quantity > 0) available = legacyInv.quantity;
+      }
+      if (available <= 0) {
+        const legacyMed = await Medicine.findById(request.medicine).lean();
+        if (
+          legacyMed &&
+          typeof legacyMed.quantity === "number" &&
+          legacyMed.quantity > 0
+        ) {
+          available = legacyMed.quantity;
+        }
+      }
+    }
+    if (available < request.quantity) {
+      return res.status(400).json({
+        success: false,
+        message: "Insufficient central stock",
+        available,
+        needed: request.quantity,
+      });
+    }
+    // Ensure a StockBalance doc exists before decrement (so it won't start negative)
+    if (!sourceBal) {
+      await StockBalance.updateOne(
+        { medicineId: request.medicine, locationId: storeId },
+        {
+          $setOnInsert: { onHandQty: available },
+        },
+        { upsert: true }
+      );
+      sourceBal = await StockBalance.findOne({
+        medicineId: request.medicine,
+        locationId: storeId,
+      });
     }
     const correlationId = `REQ-${id}`;
     const outLine = await StockLedger.create({
@@ -602,6 +829,7 @@ export const approveRequest = async (req, res) => {
       sourceDocType: "REQUEST",
       sourceDocId: id,
       correlationId,
+      createdByUserId: req.user?.id,
     });
     const inLine = await StockLedger.create({
       medicineId: request.medicine,
@@ -611,6 +839,7 @@ export const approveRequest = async (req, res) => {
       sourceDocType: "REQUEST",
       sourceDocId: id,
       correlationId,
+      createdByUserId: req.user?.id,
     });
     await StockBalance.updateOne(
       { medicineId: request.medicine, locationId: storeId },
@@ -619,6 +848,15 @@ export const approveRequest = async (req, res) => {
         $set: { lastTxnAt: new Date(), lastTxnId: outLine._id },
       },
       { upsert: true }
+    );
+    // If legacy inventory exists, decrement it as well to keep it roughly in sync until fully deprecated
+    await Inventory.updateOne(
+      {
+        medicine: request.medicine,
+        locationType: "Store",
+        locationId: storeId,
+      },
+      { $inc: { quantity: -Math.abs(request.quantity) } }
     );
     await StockBalance.updateOne(
       { medicineId: request.medicine, locationId: request.branch },
@@ -631,6 +869,7 @@ export const approveRequest = async (req, res) => {
 
     request.status = "Fulfilled";
     request.fulfilledAt = new Date();
+    if (req.user?.id) request.approvedByUserId = req.user.id;
     await request.save();
 
     res
@@ -660,6 +899,30 @@ export const rejectRequest = async (req, res) => {
     res
       .status(200)
       .json({ success: true, message: "Request rejected", request });
+  } catch (e) {
+    res.status(400).json({ success: false, message: e.message });
+  }
+};
+
+// Cancel a pending request (branch/employee initiated). Simply marks as Rejected with note "Cancelled by branch" if not already processed.
+export const cancelRequest = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const request = await Request.findById(id);
+    if (!request)
+      return res
+        .status(404)
+        .json({ success: false, message: "Request not found" });
+    if (request.status !== "Pending")
+      return res
+        .status(400)
+        .json({ success: false, message: "Cannot cancel processed request" });
+    request.status = "Rejected";
+    request.rejectionNote = "Cancelled by branch";
+    await request.save();
+    res
+      .status(200)
+      .json({ success: true, message: "Request cancelled", request });
   } catch (e) {
     res.status(400).json({ success: false, message: e.message });
   }

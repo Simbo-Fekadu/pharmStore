@@ -1,36 +1,19 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  Package,
-  Clock,
-  Skull,
-  Trash2,
-  BarChart3,
-  DollarSign,
-  Coins,
-  TrendingUp,
-  Tag,
-} from "lucide-react";
+import { Package, Clock, Skull, Trash2, BarChart3 } from "lucide-react";
 const API = "http://localhost:3000/backend";
 
-// Dashboard with summary metrics
-const AdminDashboard = () => {
+// Employee dashboard = Admin dashboard minus price metrics
+const EmployeeDashboard = () => {
   const [stats, setStats] = useState({
     total: 0,
     nearExpiry: 0,
     expired: 0,
-    deleted: 0,
   });
   const navigate = useNavigate();
-  // timeline reserved for future sales/prescription trend integration (removed for now)
-  const [range, setRange] = useState("30"); // days window (kept for future trend integration)
+  const [range, setRange] = useState("30");
   const [medicines, setMedicines] = useState([]);
   const [loading, setLoading] = useState(false);
-  const formatBirr = (v) =>
-    typeof v !== "number" || !isFinite(v)
-      ? "Br 0"
-      : `Br ${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
-
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -40,7 +23,7 @@ const AdminDashboard = () => {
         const meds = data.medicines || [];
         setMedicines(meds);
         const now = Date.now();
-        const nearCut = now + 90 * 86400000; // 90 day near-expiry window
+        const nearCut = now + 90 * 86400000;
         const active = meds.filter((m) => !m.isDeleted);
         const expired = active.filter(
           (m) => new Date(m.expiryDate).getTime() < now
@@ -49,16 +32,11 @@ const AdminDashboard = () => {
           const t = new Date(m.expiryDate).getTime();
           return t >= now && t <= nearCut;
         });
-        const deleted = meds.filter((m) => m.isDeleted);
         setStats({
           total: active.length,
           nearExpiry: near.length,
           expired: expired.length,
-          deleted: deleted.length,
         });
-        // Placeholder synthetic timeline (flat) until sales/prescriptions exist
-        // range retained for future trend calculations
-        // synthetic timeline omitted until sales data model exists
       }
     } catch {
       /* ignore */
@@ -69,58 +47,13 @@ const AdminDashboard = () => {
   useEffect(() => {
     load();
   }, [load]);
-
-  // Price metrics (derived from medicines)
-  const priceStats = useMemo(() => {
-    const meds = (medicines || []).filter((m) => !m.isDeleted);
-    const getQty = (m) =>
-      (m.remainingQuantity ?? m.initialQuantity ?? m.quantity ?? 0) * 1;
-    let totalUnits = 0;
-    let sellUnits = 0;
-    let costUnits = 0;
-    let valueSell = 0;
-    let valueCost = 0;
-    for (const m of meds) {
-      const q = Math.max(0, Number(getQty(m)) || 0);
-      totalUnits += q;
-      const sp = Number(m.sellingPrice);
-      const cp = Number(m.purchasePrice);
-      if (isFinite(sp) && sp > 0) {
-        sellUnits += q;
-        valueSell += q * sp;
-      }
-      if (isFinite(cp) && cp > 0) {
-        costUnits += q;
-        valueCost += q * cp;
-      }
-    }
-    const gross = Math.max(0, valueSell - valueCost);
-    const gmPct = valueSell > 0 ? Math.round((gross / valueSell) * 100) : 0;
-    const covSell =
-      totalUnits > 0 ? Math.round((sellUnits / totalUnits) * 100) : 0;
-    const covCost =
-      totalUnits > 0 ? Math.round((costUnits / totalUnits) * 100) : 0;
-    const avgSell = sellUnits > 0 ? valueSell / sellUnits : 0;
-    return {
-      valueSell,
-      valueCost,
-      gross,
-      gmPct,
-      covSell,
-      covCost,
-      avgSell,
-    };
-  }, [medicines]);
-
-  // metric card helper constants removed after refactor
-  const baseTotal = stats.total + stats.deleted;
-  const pct = (num, den) => (den > 0 ? Math.round((num / den) * 100) : 0);
-
+  const baseTotal = stats.total; // trash removed for employee view
+  const pct = (n, d) => (d > 0 ? Math.round((n / d) * 100) : 0);
   return (
-    <div className="space-y-10">
+    <div className="space-y-8 pb-4">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Admin Dashboard</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
           <p className="text-white/60 text-sm mt-1">
             Real-time overview & trends of medicine status
           </p>
@@ -155,7 +88,7 @@ const AdminDashboard = () => {
             stats.nearExpiry,
             stats.total
           )}% near`}
-          onClick={() => navigate("/admin/medicines")}
+          onClick={() => navigate("/employee/medicines")}
         />
         <MetricCard
           icon={<Clock className="w-6 h-6" />}
@@ -164,7 +97,7 @@ const AdminDashboard = () => {
           label="Near Expiry (90d)"
           percent={pct(stats.nearExpiry, stats.total)}
           subtitle={`${pct(stats.nearExpiry, stats.total)}% of active`}
-          onClick={() => navigate("/admin/medicines/near-expiry")}
+          onClick={() => navigate("/employee/medicines")}
         />
         <MetricCard
           icon={<Skull className="w-6 h-6" />}
@@ -173,55 +106,9 @@ const AdminDashboard = () => {
           label="Expired"
           percent={pct(stats.expired, stats.total)}
           subtitle={`${pct(stats.expired, stats.total)}% of active`}
-          onClick={() => navigate("/admin/medicines/expired")}
-        />
-        <MetricCard
-          icon={<Trash2 className="w-6 h-6" />}
-          iconColor="slate"
-          value={stats.deleted}
-          label="In Trash"
-          percent={pct(stats.deleted, baseTotal)}
-          subtitle={`${pct(stats.deleted, baseTotal)}% of total incl. trash`}
-          onClick={() => navigate("/admin/medicines/trash")}
+          onClick={() => navigate("/employee/medicines")}
         />
       </div>
-
-      {/* Price metrics */}
-      <div className="grid grid-cols-2 md:grid-cols-2 xl:grid-cols-4 gap-4 md:gap-6">
-        <MetricCard
-          icon={<DollarSign className="w-6 h-6" />}
-          iconColor="emerald"
-          value={formatBirr(priceStats.valueSell)}
-          label="Potential Inventory Value"
-          percent={priceStats.covSell}
-          subtitle={`${priceStats.covSell}% units priced (sell)`}
-        />
-        <MetricCard
-          icon={<Coins className="w-6 h-6" />}
-          iconColor="slate"
-          value={formatBirr(priceStats.valueCost)}
-          label="Inventory Cost (Est.)"
-          percent={priceStats.covCost}
-          subtitle={`${priceStats.covCost}% units priced (cost)`}
-        />
-        <MetricCard
-          icon={<TrendingUp className="w-6 h-6" />}
-          iconColor="amber"
-          value={formatBirr(priceStats.gross)}
-          label="Potential Gross Profit"
-          percent={priceStats.gmPct}
-          subtitle={`${priceStats.gmPct}% margin`}
-        />
-        <MetricCard
-          icon={<Tag className="w-6 h-6" />}
-          iconColor="emerald"
-          value={formatBirr(priceStats.avgSell)}
-          label="Avg Sell Price / Unit"
-          percent={priceStats.covSell}
-          subtitle={`${priceStats.covSell}% coverage`}
-        />
-      </div>
-      {/* Charts (side by side on desktop) */}
       <div className="grid gap-6 md:grid-cols-2">
         <div className="bg-white/10 border border-white/10 rounded-xl p-6 backdrop-blur-sm flex flex-col gap-5">
           <div className="flex items-center justify-between">
@@ -243,113 +130,7 @@ const AdminDashboard = () => {
   );
 };
 
-const LineChart = ({ data }) => {
-  if (!data || data.length === 0)
-    return (
-      <div className="text-white/60 text-sm py-10 text-center">No data</div>
-    );
-  const pad = 24;
-  const h = 220;
-  const w = 760;
-  const max = Math.max(
-    1,
-    ...data.map((d) => Math.max(d.active, d.near, d.expired))
-  );
-  const toX = (i) => pad + (i / Math.max(1, data.length - 1)) * (w - pad * 2);
-  const toY = (v) => h - pad - (v / max) * (h - pad * 2);
-  const buildPath = (key) =>
-    data
-      .map((d, i) => `${i === 0 ? "M" : "L"}${toX(i)},${toY(d[key])}`)
-      .join(" ");
-  const pathActive = buildPath("active");
-  const pathNear = buildPath("near");
-  const pathExpired = buildPath("expired");
-  const area = (key, color) => {
-    const path =
-      data
-        .map((d, i) => `${i === 0 ? "M" : "L"}${toX(i)},${toY(d[key])}`)
-        .join(" ") +
-      ` L${toX(data.length - 1)},${h - pad} L${toX(0)},${h - pad} Z`;
-    return <path d={path} fill={color} opacity="0.08" />;
-  };
-  return (
-    <div className="overflow-x-auto">
-      <svg width={w} height={h} className="max-w-full">
-        {/* grid lines */}
-        {Array.from({ length: 5 }).map((_, i) => {
-          const y = pad + ((h - pad * 2) / 4) * i;
-          return (
-            <line
-              key={i}
-              x1={pad}
-              x2={w - pad}
-              y1={y}
-              y2={y}
-              stroke="rgba(255,255,255,0.08)"
-              strokeWidth={1}
-            />
-          );
-        })}
-        {area("active", "#34d399")}
-        {area("near", "#fbbf24")}
-        {area("expired", "#fb7185")}
-        <path d={pathActive} fill="none" stroke="#34d399" strokeWidth={2} />
-        <path d={pathNear} fill="none" stroke="#fbbf24" strokeWidth={2} />
-        <path d={pathExpired} fill="none" stroke="#fb7185" strokeWidth={2} />
-        {/* points */}
-        {data.map((d, i) => (
-          <g key={i}>
-            <circle cx={toX(i)} cy={toY(d.active)} r={3} fill="#34d399" />
-            <circle cx={toX(i)} cy={toY(d.near)} r={3} fill="#fbbf24" />
-            <circle cx={toX(i)} cy={toY(d.expired)} r={3} fill="#fb7185" />
-          </g>
-        ))}
-        {/* x axis labels (sparse) */}
-        {data.map((d, i) =>
-          i % Math.ceil(data.length / 6) === 0 ? (
-            <text
-              key={"t" + i}
-              x={toX(i)}
-              y={h - 6}
-              textAnchor="middle"
-              fontSize={10}
-              fill="rgba(255,255,255,0.6)"
-            >
-              {new Date(d.t).toLocaleDateString(undefined, {
-                month: "short",
-                day: "numeric",
-              })}
-            </text>
-          ) : null
-        )}
-        {/* y axis labels */}
-        {Array.from({ length: 5 }).map((_, i) => {
-          const val = Math.round((max / 4) * i);
-          return (
-            <text
-              key={"y" + i}
-              x={8}
-              y={pad + ((h - pad * 2) / 4) * (4 - i) + 4}
-              fontSize={10}
-              fill="rgba(255,255,255,0.5)"
-            >
-              {val}
-            </text>
-          );
-        })}
-      </svg>
-    </div>
-  );
-};
-
-const Legend = ({ color, label }) => (
-  <div className="flex items-center gap-1">
-    <span className="w-3 h-3 rounded" style={{ background: color }} />
-    <span className="text-white/70 text-xs">{label}</span>
-  </div>
-);
-
-// Reusable metric card with radial percent
+// MetricCard, CategoryBars, CategoryDonut copied from Admin (without price metrics)
 const MetricCard = ({
   icon,
   iconColor,
@@ -390,9 +171,7 @@ const MetricCard = ({
     <button
       type="button"
       onClick={onClick}
-      className={
-        "text-left relative overflow-hidden group rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm p-4 flex flex-col gap-4 shadow transition-all duration-300 hover:shadow-xl hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-[var(--brand)]"
-      }
+      className="text-left relative overflow-hidden group rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm p-4 flex flex-col gap-4 shadow transition-all duration-300 hover:shadow-xl hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-[var(--brand)]"
     >
       <div className="flex items-start justify-between gap-4">
         <div
@@ -451,7 +230,6 @@ const MetricCard = ({
   );
 };
 
-// Category aggregated horizontal bars (alphabetical)
 const CategoryBars = ({ medicines }) => {
   const counts = {};
   (medicines || [])
@@ -496,7 +274,6 @@ const CategoryBars = ({ medicines }) => {
   );
 };
 
-// Category donut (simple ring composed of arcs)
 const CategoryDonut = ({ medicines }) => {
   const counts = {};
   (medicines || [])
@@ -544,7 +321,7 @@ const CategoryDonut = ({ medicines }) => {
           const len = frac * circ;
           const dash = `${len} ${circ - len}`;
           const col = palette[i % palette.length];
-          const circleEl = (
+          const el = (
             <circle
               key={cat}
               cx={cx}
@@ -559,7 +336,7 @@ const CategoryDonut = ({ medicines }) => {
             />
           );
           offset += len;
-          return circleEl;
+          return el;
         })}
         <text
           x={cx}
@@ -594,4 +371,4 @@ const CategoryDonut = ({ medicines }) => {
   );
 };
 
-export default AdminDashboard;
+export default EmployeeDashboard;

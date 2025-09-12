@@ -22,6 +22,7 @@ const links = [
   { to: "/admin/users", label: "Users" },
   { to: "/admin/suppliers", label: "Suppliers" },
   { to: "/admin/branches", label: "Branches" },
+  { to: "/admin/chat", label: "Chat" },
   { to: "/admin/transactions", label: "Transactions" },
 ];
 
@@ -33,10 +34,38 @@ const AdminLayout = () => {
     pathname.startsWith("/admin/inventory")
   );
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [unread, setUnread] = useState(0);
+  // chat unread tracking via localStorage timestamps
+  useEffect(() => {
+    const calc = () => {
+      try {
+        const lastRead = Number(localStorage.getItem("chatLastReadAt") || 0);
+        const lastSeen = Number(localStorage.getItem("chatLastFetchTs") || 0);
+        const stored = Number(localStorage.getItem("chatUnreadCount") || 0);
+        setUnread(lastSeen > lastRead ? stored : 0);
+      } catch {
+        /* ignore */
+      }
+    };
+    calc();
+    const clear = () => setUnread(0);
+    window.addEventListener("chat-read", clear);
+    window.addEventListener("chat-updated", calc);
+    window.addEventListener("storage", calc);
+    return () => {
+      window.removeEventListener("chat-read", clear);
+      window.removeEventListener("chat-updated", calc);
+      window.removeEventListener("storage", calc);
+    };
+  }, []);
   useEffect(() => {
     // simple auth check placeholder
     const token = localStorage.getItem("token");
     if (!token) navigate("/signin");
+    const role = localStorage.getItem("role");
+    if (role && role !== "admin") {
+      navigate("/employee");
+    }
   }, [navigate]);
 
   // Derive a simple, human-friendly title for the navbar
@@ -54,6 +83,7 @@ const AdminLayout = () => {
     if (p.startsWith("/admin/suppliers")) return "Suppliers";
     if (p.startsWith("/admin/branches")) return "Branches";
     if (p.startsWith("/admin/transactions")) return "Transactions";
+    if (p.startsWith("/admin/chat")) return "Chat";
     // Fallback: use last path segment capitalized
     const seg = p.split("/").filter(Boolean).pop();
     if (!seg) return "Admin";
@@ -88,6 +118,11 @@ const AdminLayout = () => {
               }`}
             >
               {l.label}
+              {l.to === "/admin/chat" && unread > 0 && (
+                <span className="ml-2 inline-flex items-center justify-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-rose-500 text-white">
+                  {unread}
+                </span>
+              )}
             </button>
           ))}
           {/* Inventory collapsible group */}

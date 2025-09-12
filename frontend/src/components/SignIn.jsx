@@ -37,12 +37,18 @@ const SignIn = () => {
         if (data.user?.role) {
           localStorage.setItem("role", data.user.role);
         }
+        // Persist full user (with branch reference) for session-based branch logic
+        try {
+          localStorage.setItem("user", JSON.stringify(data.user));
+        } catch {
+          /* ignore */
+        }
         setMessage("Signin successful!");
         setIsError(false);
         setTimeout(() => {
           const role = data.user?.role;
           if (role === "admin") navigate("/admin");
-          else navigate("/home");
+          else navigate("/employee");
         }, 1000);
       } else {
         setMessage(data.message || "Signin failed");
@@ -56,15 +62,16 @@ const SignIn = () => {
 
   return (
     <div
-      className="min-h-screen flex items-center justify-center py-4 px-4 sm:py-8 sm:px-6 lg:px-8"
+      className="min-h-screen flex items-center justify-center py-6 px-4 sm:py-10 sm:px-6 lg:px-8 relative overflow-hidden"
       style={{ background: "var(--bg-start)" }}
     >
+      <div className="pointer-events-none absolute inset-0 opacity-70 mix-blend-overlay bg-[radial-gradient(circle_at_20%_30%,rgba(29,95,167,0.12),transparent_60%),radial-gradient(circle_at_80%_70%,rgba(5,151,217,0.12),transparent_55%)]" />
       {/* Mobile: full width with margin, Tablet: max-width, Desktop: centered with max-width */}
-      <div className="w-full max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg xl:max-w-xl">
-        <div className="bg-white/95 backdrop-blur-sm shadow-2xl rounded-lg p-6 sm:p-8 md:p-10 lg:p-12 border border-white/20">
+      <div className="w-full max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg xl:max-w-xl relative">
+        <div className="bg-white/90 dark:bg-[var(--panel-bg)] backdrop-blur-md shadow-xl ring-1 ring-black/5 dark:ring-white/10 rounded-2xl p-6 sm:p-8 md:p-10 lg:p-12">
           {/* Header - responsive text sizing */}
           <div className="text-center mb-6 sm:mb-8">
-            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold bg-gradient-to-r from-[var(--brand)] to-[var(--accent)] bg-clip-text text-transparent">
               Sign In
             </h2>
             <p className="mt-2 text-xs sm:text-sm md:text-base text-gray-600">
@@ -77,7 +84,7 @@ const SignIn = () => {
             onSubmit={handleSubmit}
             className="space-y-4 sm:space-y-5 md:space-y-6"
           >
-            <div>
+            <div className="space-y-1">
               <input
                 type="email"
                 name="email"
@@ -89,7 +96,7 @@ const SignIn = () => {
               />
             </div>
 
-            <div>
+            <div className="space-y-1">
               <input
                 type="password"
                 name="password"
@@ -104,9 +111,10 @@ const SignIn = () => {
             {/* Responsive button */}
             <button
               type="submit"
-              className="w-full bg-blue-600 text-white py-2.5 px-4 sm:py-3 sm:px-4 md:py-4 md:px-6 text-sm sm:text-base md:text-lg rounded-lg font-semibold hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-200 transform hover:scale-[1.02] active:scale-[0.98]"
+              className="w-full relative group overflow-hidden bg-[var(--brand)] text-white py-2.5 px-4 sm:py-3 sm:px-4 md:py-4 md:px-6 text-sm sm:text-base md:text-lg rounded-lg font-semibold focus:ring-2 focus:ring-[var(--brand)] focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-0 transition duration-200"
             >
-              Sign In
+              <span className="absolute inset-0 bg-gradient-to-r from-[var(--brand)] via-[var(--accent)] to-[var(--brand)] opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+              <span className="relative">Sign In</span>
             </button>
 
             {/* Responsive message display */}
@@ -123,7 +131,7 @@ const SignIn = () => {
 
           {/* Additional responsive elements */}
           <div className="mt-6 sm:mt-8 text-center">
-            <p className="text-xs sm:text-sm text-gray-500">
+            <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
               Don't have an account?{" "}
               <button
                 onClick={() => navigate("/signup")}

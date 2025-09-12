@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import {
   Trash2,
   Plus,
@@ -13,10 +13,30 @@ import {
 const API = "http://localhost:3000/backend";
 
 const AdminMedicines = () => {
+  // Helper: sort medicines by most recent first
+  const sortByRecent = (arr) =>
+    (arr || []).slice().sort((a, b) => {
+      const aT = new Date(a?.updatedAt || a?.createdAt || 0).getTime();
+      const bT = new Date(b?.updatedAt || b?.createdAt || 0).getTime();
+      return bT - aT;
+    });
   const formatBirr = (v) =>
     v == null || v === "" || isNaN(Number(v))
       ? "—"
       : `Br ${Number(v).toFixed(2)}`;
+  const sellingValue = (m) => {
+    const pp = Number(m.purchasePrice);
+    const sp = Number(m.sellingPrice);
+    if (!isFinite(pp)) return sp;
+    // If missing or clearly a multiplier (<= 3), compute from purchase price
+    if (!isFinite(sp) || sp <= 3) {
+      // If a valid multiplier present (>= 1), use it; else fallback to defaults by category
+      const factor =
+        isFinite(sp) && sp >= 1 ? sp : m.category === "Cosmetics" ? 1.35 : 1.25;
+      return Math.round(pp * factor * 100) / 100;
+    }
+    return sp;
+  };
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(false);
   const [openRow, setOpenRow] = useState(null);
@@ -40,30 +60,30 @@ const AdminMedicines = () => {
   const [submitting, setSubmitting] = useState(false);
   const [role, setRole] = useState(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch(
         `${API}/medicine?includeDeleted=false&withStock=true&storeOnly=true&centralNet=true&initialCurrent=true`
       );
       const data = await res.json();
-      if (res.ok && data.success) setList(data.medicines || []);
+      if (res.ok && data.success) setList(sortByRecent(data.medicines));
     } catch (err) {
       // Silent failure previously; log for visibility
       console.error("Failed to load medicines", err);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
   useEffect(() => {
     load();
     setRole(localStorage.getItem("role"));
-  }, []);
+  }, [load]);
   useEffect(() => {
     const h = () => load();
     window.addEventListener("medicine-added", h);
     return () => window.removeEventListener("medicine-added", h);
-  }, []);
+  }, [load]);
   const pollRef = useRef(null);
   useEffect(() => {
     if (openRow) {
@@ -73,7 +93,7 @@ const AdminMedicines = () => {
             `${API}/medicine?includeDeleted=false&withStock=true&storeOnly=true&centralNet=true&initialCurrent=true`
           );
           const d = await r.json();
-          if (r.ok && d.success) setList(d.medicines || []);
+          if (r.ok && d.success) setList(sortByRecent(d.medicines));
         } catch (err) {
           console.error("Polling refresh failed", err);
         }
@@ -416,7 +436,7 @@ const AdminMedicines = () => {
                                     Selling
                                   </p>
                                   <p className="text-foreground font-medium">
-                                    {formatBirr(m.sellingPrice)}
+                                    {formatBirr(sellingValue(m))}
                                   </p>
                                 </div>
                               </div>
@@ -665,7 +685,7 @@ const AdminMedicines = () => {
                                               Selling Price:
                                             </span>
                                             <span className="text-foreground font-medium">
-                                              {formatBirr(m.sellingPrice)}
+                                              {formatBirr(sellingValue(m))}
                                             </span>
                                           </div>
                                         </div>

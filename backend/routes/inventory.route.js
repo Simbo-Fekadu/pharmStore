@@ -8,9 +8,11 @@ import {
   getRequest,
   approveRequest,
   rejectRequest,
+  cancelRequest,
   addRequestMessage,
   postLedger,
   getStock,
+  getBranchMedicines,
 } from "../controllers/inventory.controller.js";
 import {
   verifyToken,
@@ -34,8 +36,8 @@ router.get("/", getInventory);
 // Transfer medicine from store to branch (requires inventory access)
 router.post("/transfer", verifyToken, requireInventoryAccess, transferMedicine);
 
-// Branch creates a request
-router.post("/request", createRequest);
+// Branch creates a request (auth to capture user id)
+router.post("/request", verifyToken, createRequest);
 // List all requests
 router.get("/request", listRequests);
 // Get single request
@@ -54,8 +56,13 @@ router.post(
   requireInventoryAccess,
   rejectRequest
 );
+// Cancel (branch) its own pending request - no auth currently, could add token later
+router.post("/request/:id/cancel", cancelRequest);
 // Add message to request thread
 router.post("/request/:id/message", verifyToken, addRequestMessage);
+
+// Branch owned medicines (stock currently at that branch)
+router.get("/branch/:branchId/medicines", getBranchMedicines);
 
 // Ledger and stock balance endpoints
 router.post("/ledger", verifyToken, requireInventoryAccess, postLedger);

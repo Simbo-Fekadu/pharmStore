@@ -48,13 +48,18 @@ const SignUp = () => {
 
   return (
     <div
-      className="min-h-screen flex items-center justify-center py-8 px-2 sm:px-6 lg:px-8"
+      className="min-h-screen flex items-center justify-center py-8 px-4 sm:px-6 lg:px-8 relative overflow-hidden"
       style={{ background: "var(--bg-start)" }}
     >
-      <div className="bg-white/95 backdrop-blur-sm shadow-2xl rounded-lg p-4 sm:p-8 border border-white/20 w-full max-w-sm sm:max-w-md">
+      <div className="pointer-events-none absolute inset-0 opacity-70 mix-blend-overlay bg-[radial-gradient(circle_at_75%_25%,rgba(29,95,167,0.12),transparent_60%),radial-gradient(circle_at_25%_75%,rgba(5,151,217,0.12),transparent_55%)]" />
+      <div className="bg-white/90 dark:bg-[var(--panel-bg)] backdrop-blur-md shadow-xl ring-1 ring-black/5 dark:ring-white/10 rounded-2xl p-6 sm:p-8 md:p-10 w-full max-w-sm sm:max-w-md relative">
         <div className="text-center mb-8">
-          <h2 className="text-3xl font-bold text-gray-900">Sign Up</h2>
-          <p className="mt-2 text-sm text-gray-600">Create your account</p>
+          <h2 className="text-3xl font-bold bg-gradient-to-r from-[var(--brand)] to-[var(--accent)] bg-clip-text text-transparent">
+            Sign Up
+          </h2>
+          <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+            Create your account
+          </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
@@ -108,9 +113,10 @@ const SignUp = () => {
 
           <button
             type="submit"
-            className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg font-semibold hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-200 transform hover:scale-[1.02] active:scale-[0.98]"
+            className="w-full relative group overflow-hidden bg-[var(--brand)] text-white py-3 px-4 rounded-lg font-semibold focus:ring-2 focus:ring-[var(--brand)] focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-0 transition duration-200"
           >
-            Sign Up
+            <span className="absolute inset-0 bg-gradient-to-r from-[var(--brand)] via-[var(--accent)] to-[var(--brand)] opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+            <span className="relative">Sign Up</span>
           </button>
           {message && (
             <div

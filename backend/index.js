@@ -8,6 +8,7 @@ import inventoryRouter from "./routes/inventory.route.js";
 import locationRouter from "./routes/location.route.js";
 import supplierRouter from "./routes/supplier.route.js";
 import branchRouter from "./routes/branch.route.js";
+import chatRouter from "./routes/chat.route.js";
 import cookieParser from "cookie-parser";
 import path from "path";
 import Branch from "./models/branch.model.js";
@@ -46,10 +47,16 @@ connect(process.env.MONGO_URL)
     // --- One-time migration & index maintenance for medicines ---
     try {
       const coll = Medicine.collection;
-      // 1. Drop legacy index names containing "batchNo" (old field) that cause E11000
+      // 1. Drop legacy index names containing "batchNo" (old field) or bare batchNumber unique index that cause E11000
       const indexes = await coll.indexes();
       for (const idx of indexes) {
-        if (idx.name.includes("batchNo") || idx.name === "barcode_1") {
+        if (
+          idx.name.includes("batchNo") ||
+          idx.name === "barcode_1" ||
+          idx.name === "batchNumber_1" ||
+          idx.name === "batchNumber_1_isDeleted_1" ||
+          idx.name === "uniq_active_batchNumber"
+        ) {
           try {
             await coll.dropIndex(idx.name);
             console.log("Dropped legacy medicine index:", idx.name);
@@ -89,15 +96,17 @@ connect(process.env.MONGO_URL)
           `Backfilled isDeleted=false on ${flagged.modifiedCount} medicine docs`
         );
       }
-      // 4. Re-create (idempotent) the desired partial unique index
+      // 4. Replace old unique index with per-supplier uniqueness
+      // attempts above already dropped known names; proceed to create desired index
       await coll
         .createIndex(
-          { batchNumber: 1, isDeleted: 1 },
+          { batchNumber: 1, supplier: 1, isDeleted: 1 },
           {
-            name: "uniq_active_batchNumber",
+            name: "uniq_batch_per_supplier",
             unique: true,
             partialFilterExpression: {
               batchNumber: { $type: "string", $ne: "" },
+              supplier: { $type: "objectId" },
               isDeleted: false,
             },
           }
@@ -128,11 +137,13 @@ app.use(cors({ origin: "http://localhost:5173", credentials: true }));
 app.use(express.json());
 app.use(cookieParser());
 
-// TEMP DEBUG: log every incoming request path & method (disable in prod)
-app.use((req, _res, next) => {
-  console.log(`[REQ] ${req.method} ${req.originalUrl}`);
-  next();
-});
+// Request logging disabled (was noisy during chat polling). To re-enable, set DEBUG_REQ=1.
+if (process.env.DEBUG_REQ === "1") {
+  app.use((req, _res, next) => {
+    console.log(`[REQ] ${req.method} ${req.originalUrl}`);
+    next();
+  });
+}
 
 app.listen(3000, () => {
   console.log("Server running on port 3000");
@@ -151,6 +162,7 @@ import userRouter from "./routes/user.route.js";
 app.use("/backend/user", userRouter);
 app.use("/backend/supplier", supplierRouter);
 app.use("/backend/branch", branchRouter);
+app.use("/backend/chat", chatRouter);
 
 // Temporary debug endpoints (remove after diagnosing 404 issue)
 app.get("/backend/ping", (req, res) => {

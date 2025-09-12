@@ -1,10 +1,7 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import InventoryForm from "./InventoryForm";
-import Sidebar from "./Sidebar";
 
 const InventoryPage = () => {
-  const navigate = useNavigate();
   const [inventory, setInventory] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -37,26 +34,7 @@ const InventoryPage = () => {
 
   return (
     <div className="min-h-screen flex app-gradient text-white">
-      <Sidebar />
-
-      {/* Mobile top bar */}
-      <div className="md:hidden fixed top-0 left-0 right-0 z-20 bg-[var(--bg-start)]/85 backdrop-blur-sm border-b border-white/10 px-4 py-3 flex items-center justify-between">
-        <div className="font-bold">PharmStore</div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => navigate("/home")}
-            className="px-3 py-1.5 text-xs rounded bg-white/10 hover:bg-white/20"
-          >
-            Home
-          </button>
-          <button
-            onClick={() => navigate("/signin")}
-            className="px-3 py-1.5 text-xs rounded bg-[var(--brand)] hover:bg-[var(--brand-hover)]"
-          >
-            Logout
-          </button>
-        </div>
-      </div>
+      {/* Legacy sidebar & mobile bar removed */}
 
       {/* Content */}
       <main className="flex-1 w-full md:pl-0 px-4 md:px-8 pt-20 md:pt-8 pb-12 overflow-y-auto">

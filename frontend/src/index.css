@@ -2,16 +2,17 @@
 
 /* Global Theme Variables (Professional Pharmacy Palette) */
 /* Light theme (default) */
+
 :root,
 [data-theme='light'] {
-	/* MODERN WHITE LIGHT THEME */
-	--bg-start: #ffffff; /* base background */
-	--bg-mid:   #f5f7fa; /* subtle gradient mid */
-	--bg-end:   #eef2f7; /* subtle gradient end */
-	--surface:  #ffffff; /* cards */
-	--surface-alt: #f1f5f9; /* alternate panel */
+	/* REFINED LIGHT THEME (soft cool-neutral – less stark white) */
+	--bg-start: #fdfefe; /* near white */
+	--bg-mid:   #f4f7fb; /* feather blue-tint */
+	--bg-end:   #ecf2f8; /* gentle depth */
+	--surface:  #ffffff; /* primary card */
+	--surface-alt: #f5f8fb; /* subtle contrast */
 	--panel-bg: #ffffffee; /* elevated */
-	--panel-bg-alt: #f8fafcee;
+	--panel-bg-alt: #f6f9fcf2;
 	--border-color: #e2e8f0;
 	--brand: #1d5fa7; /* primary brand blue */
 	--brand-hover: #174d86;
@@ -77,8 +78,17 @@
 }
 
 /* Gradient background utility */
-/* Use gradient in blue light mode; dark mode keeps start color (fine) */
-.app-gradient { background: linear-gradient(145deg,var(--bg-start),var(--bg-mid),var(--bg-end)); }
+/* Light: layered soft gradient; Dark: keep previous linear */
+.app-gradient { 
+	background: linear-gradient(140deg,var(--bg-start) 0%,var(--bg-mid) 42%,var(--bg-end) 100%);
+}
+[data-theme='light'] .app-gradient {
+	background: radial-gradient(circle at 25% 20%, rgba(255,255,255,0.9), var(--bg-start) 35%) ,
+							linear-gradient(145deg,var(--bg-start) 0%, var(--bg-mid) 55%, var(--bg-end) 100%);
+}
+
+/* Utility: responsive chat fill (used for mobile full-height chat panels) */
+.chat-flex-height { height: min(72vh, calc(100vh - 9rem)); }
 
 /* Light theme overrides for legacy utility classes that hard-code white text */
 [data-theme='light'] .content-root .text-white { color: var(--text-primary) !important; }

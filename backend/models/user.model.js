@@ -17,12 +17,10 @@ const userSchema = new mongoose.Schema(
       enum: ["admin", "employee", "inventory_manager"],
       default: "employee",
     },
-    branches: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Branch",
-      },
-    ],
+    branch: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Branch",
+    },
 
     password: {
       type: String,

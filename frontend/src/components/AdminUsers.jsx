@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Trash2, Edit3, Save, X } from "lucide-react";
 const API = "http://localhost:3000/backend";
 
+// Updated to single branch assignment (legacy multi-branch support removed)
 const AdminUsers = () => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -11,10 +12,10 @@ const AdminUsers = () => {
     username: "",
     email: "",
     password: "",
-    branches: [],
+    branch: "", // single branch id
   });
   const [branches, setBranches] = useState([]);
-  const [savingBranches, setSavingBranches] = useState(null); // user id currently updating branches
+  const [savingBranchUserId, setSavingBranchUserId] = useState(null); // user id currently updating branch
   const [editUserId, setEditUserId] = useState(null);
   const [editForm, setEditForm] = useState({
     username: "",
@@ -66,6 +67,12 @@ const AdminUsers = () => {
     setError("");
     try {
       const token = localStorage.getItem("token");
+      const payload = {
+        username: form.username,
+        email: form.email,
+        password: form.password,
+        branch: form.branch || undefined,
+      };
       const res = await fetch(`${API}/user`, {
         method: "POST",
         headers: {
@@ -73,11 +80,11 @@ const AdminUsers = () => {
           Authorization: `Bearer ${token}`,
         },
         credentials: "include",
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        setForm({ username: "", email: "", password: "", branches: [] });
+        setForm({ username: "", email: "", password: "", branch: "" });
         load();
       } else setError(data.message || "Create failed");
     } catch {
@@ -86,24 +93,13 @@ const AdminUsers = () => {
       setCreating(false);
     }
   };
-
-  const toggleBranchForNew = (id) => {
-    setForm((f) => ({
-      ...f,
-      branches: f.branches.includes(id)
-        ? f.branches.filter((b) => b !== id)
-        : [...f.branches, id],
-    }));
-  };
-
-  const updateUserBranches = async (user, branchId) => {
-    const has = (user.branches || []).some(
-      (b) => b._id === branchId || b === branchId
-    );
-    const newList = has
-      ? (user.branches || []).filter((b) => (b._id || b) !== branchId)
-      : [...(user.branches || []).map((b) => b._id || b), branchId];
-    setSavingBranches(user._id);
+  const assignBranch = async (user, branchId) => {
+    // clicking assigned branch again will unassign
+    const nextBranch =
+      user.branch && (user.branch._id || user.branch) === branchId
+        ? null
+        : branchId;
+    setSavingBranchUserId(user._id);
     try {
       const token = localStorage.getItem("token");
       const res = await fetch(`${API}/user/${user._id}`, {
@@ -113,7 +109,7 @@ const AdminUsers = () => {
           Authorization: `Bearer ${token}`,
         },
         credentials: "include",
-        body: JSON.stringify({ branches: newList }),
+        body: JSON.stringify({ branch: nextBranch || undefined }),
       });
       const data = await res.json();
       if (res.ok && data.success) {
@@ -124,7 +120,7 @@ const AdminUsers = () => {
     } catch {
       alert("Network error");
     } finally {
-      setSavingBranches(null);
+      setSavingBranchUserId(null);
     }
   };
 
@@ -235,16 +231,18 @@ const AdminUsers = () => {
           />
           <div className="flex flex-wrap gap-1 items-center max-h-20 overflow-auto p-1 bg-white/10 rounded border border-white/10">
             {branches.map((b) => {
-              const selected = form.branches.includes(b._id);
+              const selected = form.branch === b._id;
               return (
                 <button
                   type="button"
                   key={b._id}
-                  onClick={() => toggleBranchForNew(b._id)}
-                  className={`px-2 py-1 rounded text-[10px] font-medium border ${
+                  onClick={() =>
+                    setForm((f) => ({ ...f, branch: selected ? "" : b._id }))
+                  }
+                  className={`px-2 py-1 rounded text-[10px] font-medium border transition ${
                     selected
                       ? "bg-[var(--brand)] border-[var(--brand)]"
-                      : "bg-white/10 border-white/20"
+                      : "bg-white/10 border-white/20 hover:bg-white/20"
                   }`}
                 >
                   {b.name}
@@ -272,7 +270,7 @@ const AdminUsers = () => {
                 <th className="py-2 pr-3">Username</th>
                 <th className="py-2 pr-3">Email</th>
                 <th className="py-2 pr-3">Role</th>
-                <th className="py-2 pr-3">Branches</th>
+                <th className="py-2 pr-3">Branch</th>
                 <th className="py-2 pr-3">Joined</th>
                 <th className="py-2 pr-3">Actions</th>
               </tr>
@@ -331,26 +329,37 @@ const AdminUsers = () => {
                   <td className="py-1.5 pr-3 text-white/70">
                     <div className="flex flex-wrap gap-1 max-w-[180px]">
                       {branches.map((b) => {
-                        const assigned = (u.branches || []).some(
-                          (ub) => (ub._id || ub) === b._id
-                        );
+                        const assigned =
+                          u.branch && (u.branch._id || u.branch) === b._id;
                         return (
                           <button
                             key={b._id}
-                            disabled={savingBranches === u._id}
-                            onClick={() => updateUserBranches(u, b._id)}
+                            disabled={savingBranchUserId === u._id}
+                            onClick={() => assignBranch(u, b._id)}
                             className={`px-2 py-0.5 rounded text-[10px] border transition ${
                               assigned
                                 ? "bg-[var(--brand)] border-[var(--brand)] text-white"
                                 : "bg-white/10 border-white/20 text-white/70 hover:bg-white/20"
-                            } ${savingBranches === u._id ? "opacity-50" : ""}`}
-                            title={assigned ? "Remove branch" : "Assign branch"}
+                            } ${
+                              savingBranchUserId === u._id ? "opacity-50" : ""
+                            }`}
+                            title={
+                              assigned ? "Unassign branch" : "Assign branch"
+                            }
                             type="button"
                           >
                             {b.name}
                           </button>
                         );
                       })}
+                      {u.branch &&
+                        !branches.some(
+                          (b) => b._id === (u.branch._id || u.branch)
+                        ) && (
+                          <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 border border-amber-400/30 text-amber-300">
+                            Unknown
+                          </span>
+                        )}
                     </div>
                   </td>
                   <td className="py-1.5 pr-3 text-white/70">

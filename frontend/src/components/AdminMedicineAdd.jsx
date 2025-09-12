@@ -28,7 +28,8 @@ const AdminMedicineAdd = () => {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [isError, setIsError] = useState(false);
-  const [editingId, setEditingId] = useState(null);
+  const [editingId] = useState(null);
+  const [sellingDirty, setSellingDirty] = useState(false); // track if user edited selling
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -37,17 +38,52 @@ const AdminMedicineAdd = () => {
         const res = await fetch(`${API}/location/store`);
         const data = await res.json();
         if (Array.isArray(data)) setStores(data);
-      } catch {}
+      } catch {
+        // ignore store fetch errors
+      }
       try {
         const res = await fetch(`${API}/supplier`);
         const data = await res.json();
         if (res.ok && data.success) setSuppliers(data.suppliers || []);
-      } catch {}
+      } catch {
+        // ignore supplier fetch errors
+      }
     })();
   }, []);
 
+  // Default and auto-convert behavior for Selling Price
+  useEffect(() => {
+    const p = parseFloat(form.purchasePrice);
+    const factor = form.category === "Cosmetics" ? 1.35 : 1.25;
+    const computed =
+      Number.isFinite(p) && p > 0
+        ? String(Math.round(p * factor * 100) / 100)
+        : "";
+
+    if (!sellingDirty) {
+      // Auto-fill and keep in sync when user hasn't edited selling
+      if (form.sellingPrice !== computed) {
+        setForm((prev) => ({ ...prev, sellingPrice: computed }));
+      }
+      return;
+    }
+
+    // If user-provided looks like a multiplier, convert it immediately
+    const sNum = parseFloat(form.sellingPrice);
+    if (Number.isFinite(p) && Number.isFinite(sNum) && sNum > 0 && sNum <= 3) {
+      const conv = String(Math.round(p * sNum * 100) / 100);
+      if (form.sellingPrice !== conv) {
+        setForm((prev) => ({ ...prev, sellingPrice: conv }));
+      }
+    }
+  }, [form.purchasePrice, form.category, form.sellingPrice, sellingDirty]);
+
   const handleChange = (e) => {
     const { name, value } = e.target;
+    if (name === "sellingPrice") {
+      // typing into selling makes it user-controlled; clearing re-enables auto
+      setSellingDirty(value !== "");
+    }
     setForm((p) => ({ ...p, [name]: value }));
   };
 
@@ -57,11 +93,27 @@ const AdminMedicineAdd = () => {
     setMessage("");
     setIsError(false);
     try {
+      // If sellingPrice is blank, omit and let server default apply; otherwise use user's value
+      let selling = form.sellingPrice;
+      const pNum = parseFloat(form.purchasePrice);
+      const sNum = parseFloat(form.sellingPrice);
+      // If user typed a multiplier (e.g., 1.35) instead of absolute price, convert to price
+      if (
+        sNum &&
+        pNum &&
+        Number.isFinite(sNum) &&
+        Number.isFinite(pNum) &&
+        sNum > 0 &&
+        sNum <= 3
+      ) {
+        selling = String(Math.round(pNum * sNum * 100) / 100);
+      }
       const payload = {
         ...form,
         purchasePrice: Number(form.purchasePrice),
         quantity: form.quantity ? Number(form.quantity) : 0,
-        sellingPrice: form.sellingPrice ? form.sellingPrice : undefined,
+        sellingPrice:
+          selling !== "" && selling != null ? Number(selling) : undefined,
       };
       if (!payload.storeId || !payload.storeId.trim()) delete payload.storeId;
       if (!payload.supplier || !payload.supplier.trim())
@@ -94,31 +146,16 @@ const AdminMedicineAdd = () => {
 
   return (
     <div className="max-w-4xl mx-auto">
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Add Medicine</h1>
-          <p className="text-muted-foreground mt-1">
-            Create a new medicine entry
-          </p>
-        </div>
-        <button
-          onClick={() => navigate(-1)}
-          className="px-4 py-2 rounded-lg bg-muted hover:bg-muted/80 text-muted-foreground text-sm font-medium"
-        >
-          Back
-        </button>
-      </div>
-
       <div className="bg-card border border-border rounded-xl shadow-sm">
-        <form onSubmit={handleSubmit} className="p-6 space-y-8">
+        <form onSubmit={handleSubmit} className="p-4 md:p-5 space-y-6">
           {/* Basic Information */}
-          <section className="space-y-4">
-            <header className="border-b border-border pb-2">
-              <h2 className="text-lg font-semibold text-foreground">
+          <section className="space-y-3">
+            <header className="border-b border-border pb-1">
+              <h2 className="text-base md:text-lg font-semibold text-foreground">
                 Basic Information
               </h2>
             </header>
-            <div className="grid gap-4">
+            <div className="grid gap-3">
               <div>
                 <label className="text-sm font-medium text-foreground mb-2 block">
                   Medicine Name *
@@ -161,6 +198,7 @@ const AdminMedicineAdd = () => {
                       "Syrup",
                       "Injection",
                       "Cream/Oint",
+                      "Cosmetics",
                       "Others",
                     ].map((c) => (
                       <option key={c} value={c}>
@@ -174,13 +212,13 @@ const AdminMedicineAdd = () => {
           </section>
 
           {/* Inventory */}
-          <section className="space-y-4">
-            <header className="border-b border-border pb-2">
-              <h2 className="text-lg font-semibold text-foreground">
+          <section className="space-y-3">
+            <header className="border-b border-border pb-1">
+              <h2 className="text-base md:text-lg font-semibold text-foreground">
                 Inventory Details
               </h2>
             </header>
-            <div className="grid gap-4">
+            <div className="grid gap-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-sm font-medium text-foreground mb-2 block">
@@ -247,9 +285,11 @@ const AdminMedicineAdd = () => {
           </section>
 
           {/* Pricing */}
-          <section className="space-y-4">
-            <header className="border-b border-border pb-2">
-              <h2 className="text-lg font-semibold text-foreground">Pricing</h2>
+          <section className="space-y-3">
+            <header className="border-b border-border pb-1">
+              <h2 className="text-base md:text-lg font-semibold text-foreground">
+                Pricing
+              </h2>
             </header>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -275,7 +315,14 @@ const AdminMedicineAdd = () => {
                   name="sellingPrice"
                   value={form.sellingPrice}
                   onChange={handleChange}
-                  placeholder="Auto calculated"
+                  placeholder={(function () {
+                    const p = parseFloat(form.purchasePrice);
+                    const factor = form.category === "Cosmetics" ? 1.35 : 1.25;
+                    if (Number.isFinite(p) && p > 0) {
+                      return (Math.round(p * factor * 100) / 100).toFixed(2);
+                    }
+                    return "Auto";
+                  })()}
                   className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                 />
               </div>
@@ -283,97 +330,100 @@ const AdminMedicineAdd = () => {
           </section>
 
           {/* Store & Supplier */}
-          <section className="space-y-4">
-            <header className="border-b border-border pb-2">
-              <h2 className="text-lg font-semibold text-foreground">
+          <section className="space-y-3">
+            <header className="border-b border-border pb-1">
+              <h2 className="text-base md:text-lg font-semibold text-foreground">
                 Store & Supplier
               </h2>
             </header>
-            <div>
-              <label className="text-sm font-medium text-foreground mb-2 block">
-                Store
-              </label>
-              <select
-                name="storeId"
-                value={form.storeId}
-                onChange={handleChange}
-                className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-              >
-                <option value="">Select store for initial stock</option>
-                {stores.map((s) => (
-                  <option key={s._id} value={s._id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="relative">
-              <label className="text-sm font-medium text-foreground mb-2 block">
-                Supplier
-              </label>
-              <input
-                name="supplier"
-                value={supplierInput}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setSupplierInput(val);
-                  setForm((p) => ({ ...p, supplier: val }));
-                  setShowSupplierDrop(true);
-                }}
-                onFocus={() => setShowSupplierDrop(true)}
-                onBlur={() => setTimeout(() => setShowSupplierDrop(false), 150)}
-                placeholder="Search supplier or enter new"
-                className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-              />
-              {showSupplierDrop && supplierInput && (
-                <div className="absolute z-20 mt-1 left-0 right-0 max-h-48 overflow-auto bg-card border border-border rounded-lg shadow-lg">
-                  {suppliers
-                    .filter((s) =>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium text-foreground mb-2 block">
+                  Store
+                </label>
+                <select
+                  name="storeId"
+                  value={form.storeId}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                >
+                  <option value="">Select store for initial stock</option>
+                  {stores.map((s) => (
+                    <option key={s._id} value={s._id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="relative">
+                <label className="text-sm font-medium text-foreground mb-2 block">
+                  Supplier
+                </label>
+                <input
+                  name="supplier"
+                  value={supplierInput}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setSupplierInput(val);
+                    setForm((p) => ({ ...p, supplier: val }));
+                    setShowSupplierDrop(true);
+                  }}
+                  onFocus={() => setShowSupplierDrop(true)}
+                  onBlur={() =>
+                    setTimeout(() => setShowSupplierDrop(false), 150)
+                  }
+                  placeholder="Search supplier or enter new"
+                  className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                />
+                {showSupplierDrop && supplierInput && (
+                  <div className="absolute z-20 mt-1 left-0 right-0 max-h-48 overflow-auto bg-card border border-border rounded-lg shadow-lg">
+                    {suppliers
+                      .filter((s) =>
+                        s.supplierName
+                          .toLowerCase()
+                          .includes(supplierInput.toLowerCase())
+                      )
+                      .slice(0, 10)
+                      .map((s) => (
+                        <button
+                          type="button"
+                          key={s._id}
+                          onClick={() => {
+                            setForm((p) => ({ ...p, supplier: s._id }));
+                            setSupplierInput(s.supplierName);
+                            setShowSupplierDrop(false);
+                          }}
+                          className="w-full text-left px-3 py-2 hover:bg-muted focus:bg-muted transition-colors"
+                        >
+                          <div className="font-medium text-foreground">
+                            {s.supplierName}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {s.phoneNumber} {s.address ? `• ${s.address}` : ""}
+                          </div>
+                        </button>
+                      ))}
+                    {suppliers.filter((s) =>
                       s.supplierName
                         .toLowerCase()
                         .includes(supplierInput.toLowerCase())
-                    )
-                    .slice(0, 10)
-                    .map((s) => (
-                      <button
-                        type="button"
-                        key={s._id}
-                        onClick={() => {
-                          setForm((p) => ({ ...p, supplier: s._id }));
-                          setSupplierInput(s.supplierName);
-                          setShowSupplierDrop(false);
-                        }}
-                        className="w-full text-left px-3 py-2 hover:bg-muted focus:bg-muted transition-colors"
-                      >
-                        <div className="font-medium text-foreground">
-                          {s.supplierName}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {s.phoneNumber} {s.address ? `• ${s.address}` : ""}
-                        </div>
-                      </button>
-                    ))}
-                  {suppliers.filter((s) =>
-                    s.supplierName
-                      .toLowerCase()
-                      .includes(supplierInput.toLowerCase())
-                  ).length === 0 && (
-                    <div className="px-3 py-2 text-xs text-muted-foreground">
-                      No match - will create new supplier
-                    </div>
-                  )}
-                </div>
-              )}
+                    ).length === 0 && (
+                      <div className="px-3 py-2 text-xs text-muted-foreground">
+                        No match - will create new supplier
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </section>
 
-          {/* Additional Info */}
-          <section className="space-y-4">
-            <header className="border-b border-border pb-2">
-              <h2 className="text-lg font-semibold text-foreground">
-                Additional Information
-              </h2>
-            </header>
+          {/* Additional Info (collapsed) */}
+          <details className="space-y-3">
+            <summary className="list-none cursor-pointer select-none border-b border-border pb-1 text-base md:text-lg font-semibold text-foreground flex items-center justify-between">
+              <span>Additional Information</span>
+              <span className="text-xs text-muted-foreground">(optional)</span>
+            </summary>
             <div>
               <label className="text-sm font-medium text-foreground mb-2 block">
                 Description
@@ -387,10 +437,10 @@ const AdminMedicineAdd = () => {
                 className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent resize-none"
               />
             </div>
-          </section>
+          </details>
 
           {/* Actions */}
-          <div className="flex gap-3 pt-4 border-t border-border">
+          <div className="flex gap-3 pt-3 border-t border-border">
             <button
               type="submit"
               disabled={submitting}

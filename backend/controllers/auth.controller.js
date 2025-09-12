@@ -29,12 +29,30 @@ export const signup = async (req, res, next) => {
 export const signin = async (req, res, next) => {
   const { email, password } = req.body;
   try {
-    const validUser = await User.findOne({ email });
+    let validUser = await User.findOne({ email }).populate("branch");
     if (!validUser) return next(errorHandler(404, "User not found!"));
     const validPassword = bcryptjs.compareSync(password, validUser.password);
     if (!validPassword) return next(errorHandler(401, "Incorrect password"));
+    // Legacy migration: if no branch but single-element branches array, promote it
+    if (
+      !validUser.branch &&
+      Array.isArray(validUser.branches) &&
+      validUser.branches.length === 1
+    ) {
+      validUser.branch = validUser.branches[0];
+      try {
+        await validUser.save();
+      } catch {
+        /* ignore */
+      }
+      validUser = await User.findById(validUser._id).populate("branch");
+    }
     const token = jwt.sign(
-      { id: validUser._id, role: validUser.role },
+      {
+        id: validUser._id,
+        role: validUser.role,
+        branch: validUser.branch?._id || validUser.branch,
+      },
       process.env.SECRET,
       {
         expiresIn: "3d",

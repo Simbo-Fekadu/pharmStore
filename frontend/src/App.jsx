@@ -2,7 +2,6 @@ import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import Landing from "./components/Landing";
 import SignIn from "./components/SignIn";
 import SignUp from "./components/SignUp";
-import Home from "./components/Home";
 import InventoryPage from "./components/InventoryPage";
 import AdminLayout from "./components/AdminLayout";
 import AdminMedicines from "./components/AdminMedicines";
@@ -20,6 +19,11 @@ import BranchRequest from "./components/BranchRequest";
 import Fulfillment from "./components/Fulfillment";
 import AdminRequestCenter from "./components/AdminRequestCenter";
 import AdminTransactions from "./components/AdminTransactions";
+import EmployeeLayout from "./components/EmployeeLayout";
+import EmployeeDashboard from "./components/EmployeeDashboard";
+import EmployeeMedicines from "./components/EmployeeMedicines";
+import BranchMedicines from "./components/BranchMedicines";
+import Chat from "./components/Chat";
 function App() {
   return (
     <Router>
@@ -27,10 +31,8 @@ function App() {
         <Route path="/" element={<Landing />} />
         <Route path="/signin" element={<SignIn />} />
         <Route path="/signup" element={<SignUp />} />
-        <Route path="/home" element={<Home />} />
         <Route path="/inventory" element={<InventoryPage />} />
-        <Route path="/requests" element={<BranchRequest />} />
-        <Route path="/fulfillment" element={<Fulfillment />} />
+        {/* Employee nested functionality moved under /employee */}
         <Route path="/admin" element={<AdminLayout />}>
           <Route index element={<AdminDashboard />} />
           <Route path="medicines" element={<AdminMedicines />} />
@@ -41,10 +43,19 @@ function App() {
           <Route path="medicines/expired" element={<AdminExpired />} />
           <Route path="inventory/store" element={<AdminInventory />} />
           <Route path="inventory/branches" element={<AdminRequestCenter />} />
+          <Route path="chat" element={<Chat />} />
           <Route path="transactions" element={<AdminTransactions />} />
           <Route path="users" element={<AdminUsers />} />
           <Route path="suppliers" element={<AdminSuppliers />} />
           <Route path="branches" element={<AdminBranches />} />
+        </Route>
+        <Route path="/employee" element={<EmployeeLayout />}>
+          <Route index element={<EmployeeDashboard />} />
+          <Route path="medicines" element={<EmployeeMedicines />} />
+          <Route path="branch-medicines" element={<BranchMedicines />} />
+          <Route path="requests" element={<BranchRequest />} />
+          <Route path="chat" element={<Chat />} />
+          <Route path="fulfillment" element={<Fulfillment />} />
         </Route>
       </Routes>
     </Router>
