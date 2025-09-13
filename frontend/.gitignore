@@ -10,7 +10,14 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+dist-desktop
+build/icon.ico
+build/*.icns
+build/*.ico
 *.local
+
+# Local environment variables (do not commit secrets)
+.env
 
 # Editor directories and files
 .vscode/*

@@ -3,7 +3,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import process from "node:process";
 
-const isDev = !app.isPackaged;
+// Allow forcing dev/prod logic via env for debugging packaged build locally
+const forceProd = process.env.FORCE_PROD === "1";
+const forceDev = process.env.FORCE_DEV === "1";
+const isDev = forceDev || (!app.isPackaged && !forceProd);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -13,11 +16,11 @@ function createWindow() {
     height: 800,
     backgroundColor: "#0f1115",
     webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
+      preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true,
-      devTools: isDev,
+      sandbox: false,
+      devTools: true,
       spellcheck: false,
     },
   });
@@ -30,15 +33,30 @@ function createWindow() {
   });
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
 
-  if (isDev) {
-    win.loadURL("http://localhost:5173");
-  } else {
-    win.loadFile(path.join(__dirname, "../dist/index.html"));
-  }
+  const loadApp = async () => {
+    if (isDev) {
+      await win.loadURL("http://localhost:5173");
+    } else {
+      const indexPath = path.join(__dirname, "../dist/index.html");
+      await win.loadFile(indexPath).catch((err) => {
+        console.error("Failed to load index.html", indexPath, err);
+      });
+    }
+    win.webContents.openDevTools({ mode: "detach" });
+  };
+  loadApp();
 }
 
 app.whenReady().then(async () => {
   createWindow();
+
+  // Global error logging to help diagnose blank screen issues
+  process.on("uncaughtException", (e) => {
+    console.error("[Main] uncaughtException:", e);
+  });
+  process.on("unhandledRejection", (r) => {
+    console.error("[Main] unhandledRejection:", r);
+  });
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

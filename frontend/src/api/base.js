@@ -5,6 +5,14 @@
 export function getApiBase() {
   if (import.meta.env.VITE_API_BASE)
     return import.meta.env.VITE_API_BASE.replace(/\/$/, "");
+  // Electron runtime config (config.json) if present
+  if (
+    window.desktop &&
+    window.desktop.config &&
+    window.desktop.config.apiBase
+  ) {
+    return window.desktop.config.apiBase.replace(/\/$/, "");
+  }
   // Fallback: same origin
   return "";
 }

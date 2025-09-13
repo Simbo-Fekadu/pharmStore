@@ -2,7 +2,10 @@
   "name": "frontend",
   "private": true,
   "version": "0.0.0",
+  "description": "PharmStore desktop application",
+  "author": "PharmStore Team",
   "type": "module",
+  "main": "electron/main.js",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -10,6 +13,7 @@
     "preview": "vite preview",
     "desktop:dev": "concurrently \"npm:dev\" \"wait-on http://localhost:5173 && electron ./electron/main.js\"",
     "desktop:build": "npm run build && electron-builder --win",
+    "desktop:build:portable": "npm run build && electron-builder --win portable",
     "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {
@@ -39,20 +43,29 @@
     "appId": "com.pharmstore.app",
     "productName": "PharmStore",
     "asar": true,
+    "extraMetadata": {
+      "main": "electron/main.js"
+    },
     "directories": {
       "output": "dist-desktop"
     },
     "files": [
       "dist/**/*",
-      "electron/**/*"
+      "electron/**/*",
+      "config.json"
     ],
     "win": {
       "target": [
         {
           "target": "nsis",
           "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
         }
-      ]
+      ],
+      "icon": "build/icon.ico"
     },
     "nsis": {
       "oneClick": false,

@@ -1,4 +1,5 @@
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { BrowserRouter, HashRouter, Routes, Route } from "react-router-dom";
+import { isElectron } from "./api/base";
 import Landing from "./components/Landing";
 import SignIn from "./components/SignIn";
 import SignUp from "./components/SignUp";
@@ -25,8 +26,11 @@ import EmployeeMedicines from "./components/EmployeeMedicines";
 import BranchMedicines from "./components/BranchMedicines";
 import Chat from "./components/Chat";
 function App() {
+  const fileProtocol =
+    typeof window !== "undefined" && window.location.protocol === "file:";
+  const RouterImpl = isElectron() || fileProtocol ? HashRouter : BrowserRouter;
   return (
-    <Router>
+    <RouterImpl>
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/signin" element={<SignIn />} />
@@ -58,7 +62,7 @@ function App() {
           <Route path="fulfillment" element={<Fulfillment />} />
         </Route>
       </Routes>
-    </Router>
+    </RouterImpl>
   );
 }
 

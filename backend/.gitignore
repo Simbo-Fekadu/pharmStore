@@ -11,6 +11,9 @@ temp
 logs
 # Environment files
 .env
+# Local override files (prevent accidental secret commits)
+.env.local
+.env.production.local
 # Editor directories and files
 .vscode/*
 # Ignore all files in .vscode except extensions.json
