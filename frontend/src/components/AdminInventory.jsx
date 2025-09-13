@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { getApiBase } from "../api/base";
+import { authFetch } from "../api/authFetch";
 const API = getApiBase() + "/backend";
 
 const AdminInventory = () => {
@@ -37,9 +38,9 @@ const AdminInventory = () => {
     setError("");
     try {
       const params = new URLSearchParams({ includeZero: "false" });
-      const res = await fetch(`${API}/inventory/stock?${params.toString()}`, {
-        credentials: "include",
-      });
+      const res = await authFetch(
+        `${API}/inventory/stock?${params.toString()}`
+      );
       const data = await res.json();
       if (res.ok && data.success) setInventory(data.balances || []);
       else setError(data.message || "Failed to load inventory");
@@ -92,10 +93,9 @@ const AdminInventory = () => {
         batchNumber: receive.batchNumber || undefined,
         expiryDate: receive.expiryDate || undefined,
       };
-      const res = await fetch(`${API}/inventory/ledger`, {
+      const res = await authFetch(`${API}/inventory/ledger`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
         body: JSON.stringify(payload),
       });
       const data = await res.json();
@@ -429,12 +429,11 @@ const AdminInventory = () => {
                     return;
                   setSubmitting(true);
                   try {
-                    const res = await fetch(
+                    const res = await authFetch(
                       `${API}/inventory/transfer/direct`,
                       {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        credentials: "include",
                         body: JSON.stringify({
                           medicineId: dist.medicineId,
                           branchId: dist.branchId,

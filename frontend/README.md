@@ -73,3 +73,37 @@ Only variables prefixed with `VITE_` are embedded at build time (e.g. `VITE_API_
 - Auto-updates via `electron-updater`.
 - In-app settings screen for API endpoint.
 - Crash reporting / telemetry (privacy compliant).
+
+## Release Notes
+
+### 0.0.1 (Initial Desktop Preview)
+
+Hardening & cleanup before first tagged release:
+
+- Added Content Security Policy restricting external domains to Google Fonts and API endpoints.
+- Removed development debug overlays and preload warning banners from production renderer.
+- DevTools now open only in development builds (not in packaged production).
+- Implemented single instance lock to prevent multiple running copies.
+- Set explicit `AppUserModelID` for Windows taskbar grouping / notifications.
+- Introduced version bump to `0.0.1` and documented build workflow.
+
+Security TODOs for a future minor release:
+
+- Re-enable `sandbox: true` (after verifying preload adjustments).
+- Consider code signing certificate for distribution (SmartScreen trust).
+- Optional auto-update integration (`electron-updater`).
+- Add crash / diagnostics reporting (privacy aware).
+
+### Building 0.0.1
+
+```powershell
+# From frontend directory
+$env:VITE_API_BASE="https://your-production-backend.example"; npm run desktop:build
+```
+
+Artifacts appear under `dist-desktop/`:
+
+- Installer: `PharmStore Setup 0.0.1.exe`
+- Portable: `PharmStore 0.0.1.exe`
+
+Distribute one of the above (not the entire folder). For end users unfamiliar with configuration, prefer the installer.

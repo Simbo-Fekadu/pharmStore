@@ -19,8 +19,9 @@ function createWindow() {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
+      // TODO: Re-enable sandbox after verifying preload remains compatible
       sandbox: false,
-      devTools: true,
+      devTools: isDev,
       spellcheck: false,
     },
   });
@@ -42,12 +43,30 @@ function createWindow() {
         console.error("Failed to load index.html", indexPath, err);
       });
     }
-    win.webContents.openDevTools({ mode: "detach" });
+    if (isDev) {
+      win.webContents.openDevTools({ mode: "detach" });
+    }
   };
   loadApp();
 }
 
+// Ensure single instance (prevents multiple updaters and data races)
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    const win = BrowserWindow.getAllWindows()[0];
+    if (win) {
+      if (win.isMinimized()) win.restore();
+      win.focus();
+    }
+  });
+}
+
 app.whenReady().then(async () => {
+  // Sets correct AppUserModelID for notifications / taskbar grouping on Windows
+  app.setAppUserModelId("com.pharmstore.app");
   createWindow();
 
   // Global error logging to help diagnose blank screen issues

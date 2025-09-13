@@ -1,0 +1,21 @@
+// Centralized authenticated fetch wrapper
+// Automatically attaches Authorization header if a token is stored in localStorage
+// Always sends credentials to allow cookie-based fallbacks
+
+export function authFetch(url, options = {}) {
+  try {
+    const token = localStorage.getItem("token");
+    const mergedHeaders = {
+      ...(options.headers || {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+    return fetch(url, {
+      credentials: "include",
+      ...options,
+      headers: mergedHeaders,
+    });
+  } catch (e) {
+    // Fallback: still attempt raw fetch
+    return fetch(url, options);
+  }
+}

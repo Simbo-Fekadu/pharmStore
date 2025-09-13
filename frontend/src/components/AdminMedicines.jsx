@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 
 import { getApiBase } from "../api/base";
+import { authFetch } from "../api/authFetch";
 const API = getApiBase() + "/backend";
 
 const AdminMedicines = () => {
@@ -113,9 +114,8 @@ const AdminMedicines = () => {
     setHistoryOpen(true);
     setHistoryLoading(true);
     try {
-      const res = await fetch(
-        `${API}/inventory/ledger?medicineId=${m._id}&limit=100`,
-        { credentials: "include" }
+      const res = await authFetch(
+        `${API}/inventory/ledger?medicineId=${m._id}&limit=100`
       );
       const data = await res.json();
       if (res.ok && data.success) setHistory(data.entries || []);
@@ -156,10 +156,9 @@ const AdminMedicines = () => {
       return;
     setSubmitting(true);
     try {
-      const res = await fetch(`${API}/inventory/transfer/direct`, {
+      const res = await authFetch(`${API}/inventory/transfer/direct`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({
           medicineId: sendForm.medicineId,
           storeId: sendForm.storeId,

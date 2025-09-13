@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { getApiBase } from "../api/base";
+import { authFetch } from "../api/authFetch";
 const API = getApiBase() + "/backend";
 
 const AdminTransactions = () => {
@@ -11,9 +12,7 @@ const AdminTransactions = () => {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API}/inventory/ledger?limit=500`, {
-        credentials: "include",
-      });
+      const res = await authFetch(`${API}/inventory/ledger?limit=500`);
       const data = await res.json();
       if (res.ok && data.success) setEntries(data.entries || []);
     } catch (err) {
