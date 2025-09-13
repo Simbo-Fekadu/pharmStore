@@ -1,4 +1,7 @@
 # PharmStore
+<img width="1893" height="863" alt="image" src="https://github.com/user-attachments/assets/1ab879b3-b6b4-4427-9f15-f5c73615f4cf" />
+
+<img width="1887" height="866" alt="image" src="https://github.com/user-attachments/assets/504be9aa-559c-4a85-a47e-e905c861a0be" />
 
 A full‑stack pharmacy inventory and branch management system built with a **React (Vite) frontend** and a **Node.js / Express / MongoDB** backend. It supports centralized medicine inventory, branch request workflows, supplier & branch administration, and rich dashboard insights.
 
