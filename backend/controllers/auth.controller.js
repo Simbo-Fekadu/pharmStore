@@ -76,8 +76,22 @@ export const signin = async (req, res, next) => {
       }
     );
     const { password: pass, ...rest } = validUser._doc;
+    const isProd = process.env.NODE_ENV === "production";
+    // Harden cookie: secure in prod, sameSite 'lax' for CSRF mitigation, httpOnly always
+    // Optionally allow overriding domain via COOKIE_DOMAIN env variable
+    const cookieOptions = {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: isProd, // only over HTTPS in production
+      path: "/",
+      // Max-Age aligned with JWT expiry (~3 days)
+      maxAge: 3 * 24 * 60 * 60 * 1000,
+    };
+    if (process.env.COOKIE_DOMAIN) {
+      cookieOptions.domain = process.env.COOKIE_DOMAIN;
+    }
     res
-      .cookie("access_token", token, { httpOnly: true })
+      .cookie("access_token", token, cookieOptions)
       .status(200)
       .json({ success: true, token, user: rest });
   } catch (error) {

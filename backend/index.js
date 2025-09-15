@@ -2,6 +2,7 @@ import express from "express";
 import mongoose from "mongoose";
 import { config } from "dotenv";
 import cors from "cors";
+import helmet from "helmet";
 import authRouter from "./routes/auth.route.js";
 import medicineRouter from "./routes/medicine.route.js";
 import inventoryRouter from "./routes/inventory.route.js";
@@ -159,15 +160,53 @@ async function start() {
 }
 const __dirname = path.resolve();
 const app = express();
+// When sitting behind a proxy (e.g. reverse proxy / cloud), trust first hop for secure cookies
+app.set("trust proxy", 1);
+
+// Build dynamic list of allowed origins from env:
+// FRONTEND_ORIGIN (single) or FRONTEND_ORIGINS (comma separated)
+const origins = new Set();
+if (process.env.FRONTEND_ORIGIN) origins.add(process.env.FRONTEND_ORIGIN);
+if (process.env.FRONTEND_ORIGINS) {
+  process.env.FRONTEND_ORIGINS.split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .forEach((o) => origins.add(o));
+}
+// Always include localhost dev ports commonly used
+origins.add("http://localhost:5173");
+origins.add("http://127.0.0.1:5173");
+
+const allowOrigins = Array.from(origins);
+
 app.use(
   cors({
-    origin: ["http://localhost:5173", process.env.FRONTEND_ORIGIN].filter(
-      Boolean
-    ),
+    origin: (origin, cb) => {
+      if (!origin) return cb(null, true); // mobile apps / curl / same-origin
+      if (allowOrigins.includes(origin)) return cb(null, true);
+      return cb(new Error("CORS origin denied"));
+    },
     credentials: true,
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-Requested-With",
+      "Accept",
+    ],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   })
 );
-app.use(express.json());
+
+// Security headers via helmet (disable CSP here because frontend sets meta CSP)
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+  })
+);
+
+// JSON body parsing with limit
+app.use(express.json({ limit: "1mb" }));
 app.use(cookieParser());
 
 if (process.env.DEBUG_REQ === "1") {
@@ -226,6 +265,7 @@ app.get("/backend/_routes", (_req, res) => {
 app.use((err, req, res, _next) => {
   const statusCode = err.statusCode || 500;
   const message = err.message || "Internal server error";
+  // Provide a normalized error shape
   return res.status(statusCode).json({
     success: false,
     statusCode,
