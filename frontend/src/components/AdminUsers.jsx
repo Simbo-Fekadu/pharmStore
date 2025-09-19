@@ -1,10 +1,14 @@
 import { useEffect, useState } from "react";
 import { Trash2, Edit3, Save, X } from "lucide-react";
 import { getApiBase } from "../api/base";
+import useToast from "../hooks/useToast";
+import useConfirm from "../hooks/useConfirm";
 const API = getApiBase() + "/backend";
 
 // Updated to single branch assignment (legacy multi-branch support removed)
 const AdminUsers = () => {
+  const toast = useToast();
+  const confirm = useConfirm();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -95,9 +99,15 @@ const AdminUsers = () => {
           role: "employee",
         });
         load();
-      } else setError(data.message || "Create failed");
+        toast.success("User created");
+      } else {
+        const msg = data.message || "Create failed";
+        setError(msg);
+        toast.error(msg);
+      }
     } catch {
       setError("Network error");
+      toast.error("Network error");
     } finally {
       setCreating(false);
     }
@@ -123,18 +133,25 @@ const AdminUsers = () => {
       const data = await res.json();
       if (res.ok && data.success) {
         setUsers((us) => us.map((u) => (u._id === user._id ? data.user : u)));
+        toast.success("Branch updated");
       } else {
-        alert(data.message || "Update failed");
+        toast.error(data.message || "Update failed");
       }
     } catch {
-      alert("Network error");
+      toast.error("Network error");
     } finally {
       setSavingBranchUserId(null);
     }
   };
 
   const removeUser = async (id) => {
-    if (!confirm("Delete this user?")) return;
+    const ok = await confirm({
+      title: "Delete user?",
+      message: "This will remove the user permanently.",
+      confirmText: "Delete",
+      tone: "danger",
+    });
+    if (!ok) return;
     try {
       const token = localStorage.getItem("token");
       const res = await fetch(`${API}/user/${id}`, {
@@ -143,10 +160,17 @@ const AdminUsers = () => {
         credentials: "include",
       });
       const data = await res.json();
-      if (res.ok && data.success) load();
-      else setError(data.message || "Delete failed");
+      if (res.ok && data.success) {
+        load();
+        toast.success("User deleted");
+      } else {
+        const msg = data.message || "Delete failed";
+        setError(msg);
+        toast.error(msg);
+      }
     } catch {
       setError("Network error");
+      toast.error("Network error");
     }
   };
 
@@ -185,11 +209,12 @@ const AdminUsers = () => {
       if (res.ok && data.success) {
         setUsers((us) => us.map((x) => (x._id === u._id ? data.user : x)));
         cancelEdit();
+        toast.success("User updated");
       } else {
-        alert(data.message || "Update failed");
+        toast.error(data.message || "Update failed");
       }
     } catch {
-      alert("Network error");
+      toast.error("Network error");
     }
   };
 

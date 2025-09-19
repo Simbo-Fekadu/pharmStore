@@ -1,11 +1,15 @@
 import { useEffect, useState } from "react";
 import { Edit3, Save, X, Trash2 } from "lucide-react";
 import { getApiBase } from "../api/base";
+import useToast from "../hooks/useToast";
+import useConfirm from "../hooks/useConfirm";
 const API = getApiBase() + "/backend";
 
 const empty = { supplierName: "", phoneNumber: "", address: "" };
 
 const AdminSuppliers = () => {
+  const toast = useToast();
+  const confirm = useConfirm();
   const [form, setForm] = useState(empty);
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -51,13 +55,16 @@ const AdminSuppliers = () => {
         setMessage("Supplier added");
         setForm(empty);
         load();
+        toast.success("Supplier added");
       } else {
         setMessage(data.message || "Failed");
         setIsError(true);
+        toast.error(data.message || "Failed to add supplier");
       }
     } catch {
       setMessage("Network error");
       setIsError(true);
+      toast.error("Network error");
     } finally {
       setSubmitting(false);
     }
@@ -90,25 +97,33 @@ const AdminSuppliers = () => {
           ls.map((x) => (x._id === editingId ? data.supplier : x))
         );
         cancelEdit();
+        toast.success("Supplier updated");
       } else {
-        alert(data.message || "Update failed");
+        toast.error(data.message || "Update failed");
       }
     } catch {
-      alert("Network error");
+      toast.error("Network error");
     } finally {
       setSavingEdit(false);
     }
   };
   const removeSupplier = async (id) => {
-    if (!confirm("Delete this supplier?")) return;
+    const ok = await confirm({
+      title: "Delete supplier?",
+      message: "This will remove the supplier.",
+      confirmText: "Delete",
+      tone: "danger",
+    });
+    if (!ok) return;
     try {
       const res = await fetch(`${API}/supplier/${id}`, { method: "DELETE" });
       const data = await res.json();
-      if (res.ok && data.success)
+      if (res.ok && data.success) {
         setList((ls) => ls.filter((x) => x._id !== id));
-      else alert(data.message || "Delete failed");
+        toast.success("Supplier deleted");
+      } else toast.error(data.message || "Delete failed");
     } catch {
-      alert("Network error");
+      toast.error("Network error");
     }
   };
 

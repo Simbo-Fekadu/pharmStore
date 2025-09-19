@@ -2,9 +2,11 @@ import React, { useEffect, useState, useCallback, useRef } from "react";
 import { ChevronDown, ChevronRight, Search, Filter } from "lucide-react";
 import { getApiBase } from "../api/base";
 import { authFetch } from "../api/authFetch";
+import useToast from "../hooks/useToast";
 const API = getApiBase() + "/backend";
 
 const EmployeeMedicines = () => {
+  const toast = useToast();
   const sortByRecent = (arr) =>
     (arr || [])
       .slice()
@@ -173,9 +175,12 @@ const EmployeeMedicines = () => {
           batchNumber: "",
           reason: "",
         });
-      } else alert(data.message || "Failed");
+        toast.success("Request sent");
+      } else {
+        toast.error(data.message || "Failed");
+      }
     } catch {
-      alert("Network error");
+      toast.error("Network error");
     } finally {
       setSubmitting(false);
     }

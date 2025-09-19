@@ -16,7 +16,7 @@ function createWindow() {
     height: 800,
     backgroundColor: "#0f1115",
     webPreferences: {
-      preload: path.join(__dirname, "preload.cjs"),
+      preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
       // TODO: Re-enable sandbox after verifying preload remains compatible

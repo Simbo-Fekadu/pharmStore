@@ -28,6 +28,8 @@ import BranchMedicines from "./components/BranchMedicines";
 import EmployeeSales from "./components/EmployeeSales";
 import EmployeeSalesHistory from "./components/EmployeeSalesHistory";
 import Chat from "./components/Chat";
+import ToastProvider from "./components/ToastProvider";
+import ConfirmProvider from "./components/ConfirmProvider";
 
 function App() {
   const fileProtocol =
@@ -35,40 +37,53 @@ function App() {
   const RouterImpl = isElectron() || fileProtocol ? HashRouter : BrowserRouter;
   return (
     <RouterImpl>
-      <Routes>
-        <Route path="/" element={<Landing />} />
-        <Route path="/signin" element={<SignIn />} />
-        <Route path="/signup" element={<SignUp />} />
-        <Route path="/inventory" element={<InventoryPage />} />
-        {/* Employee nested functionality moved under /employee */}
-        <Route path="/admin" element={<AdminLayout />}>
-          <Route index element={<AdminDashboard />} />
-          <Route path="medicines" element={<AdminMedicines />} />
-          <Route path="medicines/add" element={<AdminMedicineAdd />} />
-          <Route path="medicines/active" element={<AdminActiveMedicines />} />
-          <Route path="medicines/trash" element={<AdminMedicineTrash />} />
-          <Route path="medicines/near-expiry" element={<AdminNearExpiry />} />
-          <Route path="medicines/expired" element={<AdminExpired />} />
-          <Route path="inventory/store" element={<AdminInventory />} />
-          <Route path="inventory/branches" element={<AdminRequestCenter />} />
-          <Route path="chat" element={<Chat />} />
-          <Route path="sales" element={<AdminSales />} />
-          <Route path="transactions" element={<AdminTransactions />} />
-          <Route path="users" element={<AdminUsers />} />
-          <Route path="suppliers" element={<AdminSuppliers />} />
-          <Route path="branches" element={<AdminBranches />} />
-        </Route>
-        <Route path="/employee" element={<EmployeeLayout />}>
-          <Route index element={<EmployeeDashboard />} />
-          <Route path="medicines" element={<EmployeeMedicines />} />
-          <Route path="branch-medicines" element={<BranchMedicines />} />
-          <Route path="requests" element={<BranchRequest />} />
-          <Route path="chat" element={<Chat />} />
-          <Route path="fulfillment" element={<Fulfillment />} />
-          <Route path="sales" element={<EmployeeSales />} />
-          <Route path="sales/history" element={<EmployeeSalesHistory />} />
-        </Route>
-      </Routes>
+      <ToastProvider>
+        <ConfirmProvider>
+          <Routes>
+            <Route path="/" element={<Landing />} />
+            <Route path="/signin" element={<SignIn />} />
+            <Route path="/signup" element={<SignUp />} />
+            <Route path="/inventory" element={<InventoryPage />} />
+            {/* Employee nested functionality moved under /employee */}
+            <Route path="/admin" element={<AdminLayout />}>
+              <Route index element={<AdminDashboard />} />
+              <Route path="medicines" element={<AdminMedicines />} />
+              <Route path="medicines/add" element={<AdminMedicineAdd />} />
+              <Route
+                path="medicines/active"
+                element={<AdminActiveMedicines />}
+              />
+              <Route path="medicines/trash" element={<AdminMedicineTrash />} />
+              <Route
+                path="medicines/near-expiry"
+                element={<AdminNearExpiry />}
+              />
+              <Route path="medicines/expired" element={<AdminExpired />} />
+              <Route path="inventory/store" element={<AdminInventory />} />
+              <Route
+                path="inventory/branches"
+                element={<AdminRequestCenter />}
+              />
+              <Route path="chat" element={<Chat />} />
+              <Route path="sales" element={<AdminSales />} />
+              <Route path="transactions" element={<AdminTransactions />} />
+              <Route path="users" element={<AdminUsers />} />
+              <Route path="suppliers" element={<AdminSuppliers />} />
+              <Route path="branches" element={<AdminBranches />} />
+            </Route>
+            <Route path="/employee" element={<EmployeeLayout />}>
+              <Route index element={<EmployeeDashboard />} />
+              <Route path="medicines" element={<EmployeeMedicines />} />
+              <Route path="branch-medicines" element={<BranchMedicines />} />
+              <Route path="requests" element={<BranchRequest />} />
+              <Route path="chat" element={<Chat />} />
+              <Route path="fulfillment" element={<Fulfillment />} />
+              <Route path="sales" element={<EmployeeSales />} />
+              <Route path="sales/history" element={<EmployeeSalesHistory />} />
+            </Route>
+          </Routes>
+        </ConfirmProvider>
+      </ToastProvider>
     </RouterImpl>
   );
 }

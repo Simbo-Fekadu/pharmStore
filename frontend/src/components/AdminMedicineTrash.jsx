@@ -2,9 +2,13 @@ import { useEffect, useState } from "react";
 import { RotateCcw, Flame, FileX2, Skull, Trash2 } from "lucide-react";
 
 import { getApiBase } from "../api/base";
+import useToast from "../hooks/useToast";
+import useConfirm from "../hooks/useConfirm";
 const API = getApiBase() + "/backend";
 
 const AdminMedicineTrash = () => {
+  const toast = useToast();
+  const confirm = useConfirm();
   const [deletedList, setDeletedList] = useState([]);
   const [expiredList, setExpiredList] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -46,18 +50,28 @@ const AdminMedicineTrash = () => {
       if (res.ok && data.success) {
         setMessage("Restored");
         load();
+        toast.success("Medicine restored");
       } else {
-        setMessage(data.message || "Restore failed");
+        const msg = data.message || "Restore failed";
+        setMessage(msg);
         setIsError(true);
+        toast.error(msg);
       }
     } catch {
       setMessage("Network error");
       setIsError(true);
+      toast.error("Network error");
     }
   };
 
   const purge = async (id) => {
-    if (!confirm("Permanently delete?")) return;
+    const ok = await confirm({
+      title: "Permanently delete?",
+      message: "This cannot be undone.",
+      confirmText: "Delete permanently",
+      tone: "danger",
+    });
+    if (!ok) return;
     try {
       const res = await fetch(`${API}/medicine/${id}/purge`, {
         method: "DELETE",
@@ -66,13 +80,17 @@ const AdminMedicineTrash = () => {
       if (res.ok && data.success) {
         setMessage("Permanently removed");
         load();
+        toast.success("Deleted permanently");
       } else {
-        setMessage(data.message || "Purge failed");
+        const msg = data.message || "Purge failed";
+        setMessage(msg);
         setIsError(true);
+        toast.error(msg);
       }
     } catch {
       setMessage("Network error");
       setIsError(true);
+      toast.error("Network error");
     }
   };
 

@@ -13,9 +13,13 @@ import {
 import { getApiBase } from "../api/base";
 import { ceilCurrency, ceilOrDash } from "../utils/number";
 import { authFetch } from "../api/authFetch";
+import useToast from "../hooks/useToast";
+import useConfirm from "../hooks/useConfirm";
 const API = getApiBase() + "/backend";
 
 const AdminMedicines = () => {
+  const toast = useToast();
+  const confirm = useConfirm();
   // Helper: sort medicines by most recent first
   const sortByRecent = (arr) =>
     (arr || []).slice().sort((a, b) => {
@@ -176,22 +180,31 @@ const AdminMedicines = () => {
         load();
         const med = list.find((x) => x._id === sendForm.medicineId);
         if (med) openHistory(med);
-      } else alert(data.message || "Failed to transfer");
+        toast.success("Transfer completed");
+      } else toast.error(data.message || "Failed to transfer");
     } catch {
-      alert("Network error");
+      toast.error("Network error");
     } finally {
       setSubmitting(false);
     }
   };
   const softDelete = async (id) => {
-    if (!confirm("Move to trash?")) return;
+    const ok = await confirm({
+      title: "Move to trash?",
+      message: "You can restore from Trash later.",
+      confirmText: "Move to Trash",
+      tone: "danger",
+    });
+    if (!ok) return;
     try {
       const res = await fetch(`${API}/medicine/${id}`, { method: "DELETE" });
       const data = await res.json();
-      if (res.ok && data.success) load();
-      else alert(data.message || "Delete failed");
+      if (res.ok && data.success) {
+        load();
+        toast.success("Moved to trash");
+      } else toast.error(data.message || "Delete failed");
     } catch {
-      alert("Network error");
+      toast.error("Network error");
     }
   };
 

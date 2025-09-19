@@ -1,8 +1,12 @@
 import { useEffect, useState } from "react";
 import { getApiBase } from "../api/base";
+import useToast from "../hooks/useToast";
+import useConfirm from "../hooks/useConfirm";
 const API = getApiBase() + "/backend";
 
 const AdminBranches = () => {
+  const toast = useToast();
+  const confirm = useConfirm();
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({ name: "", address: "" });
@@ -58,30 +62,41 @@ const AdminBranches = () => {
         setForm({ name: "", address: "" });
         setEditingId(null);
         load();
+        toast.success(editingId ? "Branch updated" : "Branch created");
       } else {
-        setMessage(data.message || "Failed");
+        const msg = data.message || "Failed";
+        setMessage(msg);
         setIsError(true);
+        toast.error(msg);
       }
     } catch {
       setMessage("Network error");
       setIsError(true);
+      toast.error("Network error");
     } finally {
       setSubmitting(false);
     }
   };
 
   const removeBranch = async (id) => {
-    if (!confirm("Delete this branch?")) return;
+    const ok = await confirm({
+      title: "Delete branch?",
+      message: "This will remove the branch.",
+      confirmText: "Delete",
+      tone: "danger",
+    });
+    if (!ok) return;
     try {
       const res = await fetch(`${API}/branch/${id}`, { method: "DELETE" });
       const data = await res.json();
       if (res.ok && data.success) {
         setBranches((bs) => bs.filter((b) => b._id !== id));
+        toast.success("Branch deleted");
       } else {
-        alert(data.message || "Delete failed");
+        toast.error(data.message || "Delete failed");
       }
     } catch {
-      alert("Network error");
+      toast.error("Network error");
     }
   };
 
