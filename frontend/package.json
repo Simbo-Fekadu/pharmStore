@@ -12,8 +12,14 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "desktop:dev": "concurrently \"npm:dev\" \"wait-on http://localhost:5173 && electron ./electron/main.js\"",
-    "desktop:build": "npm run build && electron-builder --win",
-    "desktop:build:portable": "npm run build && electron-builder --win portable",
+  "desktop:build": "npm run build && electron-builder --win",
+  "desktop:build:portable": "npm run build && electron-builder --win portable",
+  "desktop:build:win:all": "npm run build && electron-builder --win --x64 --ia32",
+  "desktop:build:portable:all": "npm run build && electron-builder --win portable --x64 --ia32",
+  "desktop:build:win:x64": "npm run build && electron-builder --win nsis --x64",
+  "desktop:build:win:ia32": "npm run build && electron-builder --win nsis --ia32",
+  "desktop:build:portable:x64": "npm run build && electron-builder --win portable --x64",
+  "desktop:build:portable:ia32": "npm run build && electron-builder --win portable --ia32",
     "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {
@@ -40,6 +46,7 @@
     "wait-on": "^7.2.0"
   },
   "build": {
+    "artifactName": "${productName}-${version}-${arch}.${ext}",
     "appId": "com.pharmstore.app",
     "productName": "PharmStore",
     "asar": true,
@@ -58,20 +65,23 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": ["x64", "ia32"]
         },
         {
           "target": "portable",
-          "arch": ["x64"]
+          "arch": ["x64", "ia32"]
         }
-      ],
-      "icon": "build/icon.ico"
+      ]
     },
     "nsis": {
       "oneClick": false,
       "perMachine": false,
       "allowElevation": true,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "${productName}-setup-${version}-${arch}.exe"
+    },
+    "portable": {
+      "artifactName": "${productName}-portable-${version}-${arch}.exe"
     }
   }
 }

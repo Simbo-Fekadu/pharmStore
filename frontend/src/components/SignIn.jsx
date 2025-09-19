@@ -52,11 +52,11 @@ const SignIn = () => {
           else navigate("/employee");
         }, 1000);
       } else {
-        setMessage(data.message || "Signin failed");
+        setMessage(data.message || `Signin failed (HTTP ${res.status})`);
         setIsError(true);
       }
-    } catch {
-      setMessage("Error connecting to server");
+    } catch (err) {
+      setMessage(`Error connecting to server: ${err?.message || "Network"}`);
       setIsError(true);
     }
   };

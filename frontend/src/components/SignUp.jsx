@@ -118,6 +118,18 @@ const SignUp = () => {
             </div>
           )}
         </form>
+        {/* Additional responsive elements */}
+        <div className="mt-6 sm:mt-8 text-center">
+          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+            Already have an account?{" "}
+            <button
+              onClick={() => navigate("/signin")}
+              className="text-blue-600 hover:text-blue-700 font-medium transition duration-200"
+            >
+              Sign in here
+            </button>
+          </p>
+        </div>
       </div>
     </div>
   );

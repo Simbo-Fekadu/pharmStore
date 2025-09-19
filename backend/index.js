@@ -182,7 +182,11 @@ const allowOrigins = Array.from(origins);
 app.use(
   cors({
     origin: (origin, cb) => {
-      if (!origin) return cb(null, true); // mobile apps / curl / same-origin
+      // Allow non-browser or same-origin requests (no Origin header)
+      if (!origin) return cb(null, true);
+      // Allow Electron desktop apps (file://) which appear as Origin: null
+      if (origin === "null") return cb(null, true);
+      // Allow configured web origins
       if (allowOrigins.includes(origin)) return cb(null, true);
       return cb(new Error("CORS origin denied"));
     },
