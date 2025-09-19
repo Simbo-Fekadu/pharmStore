@@ -2,34 +2,79 @@ import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Package, Clock, Skull, Trash2, BarChart3 } from "lucide-react";
 import { getApiBase } from "../api/base";
+import { authFetch } from "../api/authFetch";
+import { ceilCurrency } from "../utils/number";
 const API = getApiBase() + "/backend";
 
 // Employee dashboard = Admin dashboard minus price metrics
 const EmployeeDashboard = () => {
-  const [stats, setStats] = useState({
-    total: 0,
-    nearExpiry: 0,
-    expired: 0,
+  const [stats, setStats] = useState({ total: 0, nearExpiry: 0, expired: 0 });
+  const [salesSummary, setSalesSummary] = useState({
+    totalAmount: 0,
+    totalTransactions: 0,
   });
-  const navigate = useNavigate();
-  const [range, setRange] = useState("30");
+  const [range, setRange] = useState("today");
   const [medicines, setMedicines] = useState([]);
   const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
+
+  // Get branchId from session/localStorage or /auth/me
+  const getBranchId = async () => {
+    let branchId = "";
+    try {
+      const stored = localStorage.getItem("user");
+      if (stored) {
+        const u = JSON.parse(stored);
+        if (u.branch) branchId = u.branch._id || u.branch;
+        else if (Array.isArray(u.branches) && u.branches.length === 1) {
+          branchId = u.branches[0]._id || u.branches[0];
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    if (!branchId) {
+      try {
+        const res = await authFetch(`${API}/auth/me`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.user?.branch)
+            branchId = data.user.branch._id || data.user.branch;
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    return branchId;
+  };
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API}/medicine?includeDeleted=true`);
+      const branchId = await getBranchId();
+      if (!branchId) {
+        setMedicines([]);
+        setStats({ total: 0, nearExpiry: 0, expired: 0 });
+        setSalesSummary({ totalAmount: 0, totalTransactions: 0 });
+        setLoading(false);
+        return;
+      }
+      // Fetch branch medicines
+      const res = await authFetch(
+        `${API}/inventory/branch/${branchId}/medicines`
+      );
       const data = await res.json();
       if (res.ok && data.success) {
         const meds = data.medicines || [];
         setMedicines(meds);
         const now = Date.now();
         const nearCut = now + 90 * 86400000;
-        const active = meds.filter((m) => !m.isDeleted);
+        const active = meds.filter((m) => !m.isDeleted && m.quantity > 0);
         const expired = active.filter(
-          (m) => new Date(m.expiryDate).getTime() < now
+          (m) => m.expiryDate && new Date(m.expiryDate).getTime() < now
         );
         const near = active.filter((m) => {
+          if (!m.expiryDate) return false;
           const t = new Date(m.expiryDate).getTime();
           return t >= now && t <= nearCut;
         });
@@ -38,17 +83,77 @@ const EmployeeDashboard = () => {
           nearExpiry: near.length,
           expired: expired.length,
         });
+      } else {
+        setMedicines([]);
+        setStats({ total: 0, nearExpiry: 0, expired: 0 });
+      }
+      // Fetch sales summary for this branch and range
+      let start, end;
+      if (range === "today") {
+        start = new Date();
+        start.setHours(0, 0, 0, 0);
+        end = new Date();
+        end.setHours(23, 59, 59, 999);
+      } else {
+        const days = Number(range) || 30;
+        end = new Date();
+        start = new Date(Date.now() - days * 86400000);
+      }
+      const toYMD = (d) =>
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
+          2,
+          "0"
+        )}-${String(d.getDate()).padStart(2, "0")}`;
+      const params = new URLSearchParams({
+        startDate: toYMD(start),
+        endDate: toYMD(end),
+      });
+      const salesRes = await authFetch(`${API}/sales/summary?${params}`);
+      const salesData = await salesRes.json();
+      if (salesRes.ok && salesData.success && salesData.summary) {
+        // Branch-wide totals: sum all employees' totals within range
+        const totals = Object.values(salesData.summary).reduce(
+          (acc, s) => {
+            const subAmount =
+              typeof s.totalAmount === "number"
+                ? s.totalAmount
+                : Array.isArray(s.sales)
+                ? s.sales.reduce(
+                    (sum, x) =>
+                      sum + (Number(x.quantity) || 0) * (Number(x.price) || 0),
+                    0
+                  )
+                : 0;
+            const subTx =
+              typeof s.totalTransactions === "number"
+                ? s.totalTransactions
+                : Array.isArray(s.sales)
+                ? s.sales.length
+                : 0;
+            acc.totalAmount += subAmount;
+            acc.totalTransactions += subTx;
+            return acc;
+          },
+          { totalAmount: 0, totalTransactions: 0 }
+        );
+        setSalesSummary(totals);
+      } else {
+        setSalesSummary({ totalAmount: 0, totalTransactions: 0 });
       }
     } catch {
-      /* ignore */
+      setMedicines([]);
+      setStats({ total: 0, nearExpiry: 0, expired: 0 });
+      setSalesSummary({ totalAmount: 0, totalTransactions: 0 });
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [range]);
+
   useEffect(() => {
     load();
   }, [load]);
-  const baseTotal = stats.total; // trash removed for employee view
+
+  const baseTotal = stats.total;
   const pct = (n, d) => (d > 0 ? Math.round((n / d) * 100) : 0);
   return (
     <div className="space-y-8 pb-4">
@@ -65,6 +170,7 @@ const EmployeeDashboard = () => {
             onChange={(e) => setRange(e.target.value)}
             className="px-3 py-2 rounded bg-white/10 border border-white/10 text-sm"
           >
+            <option value="today">Today</option>
             <option value="7">Last 7d</option>
             <option value="14">Last 14d</option>
             <option value="30">Last 30d</option>
@@ -79,6 +185,15 @@ const EmployeeDashboard = () => {
         </div>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-2 xl:grid-cols-4 gap-4 md:gap-6">
+        <MetricCard
+          icon={<BarChart3 className="w-6 h-6" />}
+          iconColor="slate"
+          value={ceilCurrency(salesSummary.totalAmount)}
+          label={range === "today" ? "Sales (Today)" : `Sales (${range}d)`}
+          percent={100}
+          subtitle={`${salesSummary.totalTransactions} transactions`}
+          onClick={() => navigate("/employee/sales/history")}
+        />
         <MetricCard
           icon={<Package className="w-6 h-6" />}
           iconColor="emerald"

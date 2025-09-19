@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { ChevronDown, ChevronRight, Search, Filter } from "lucide-react";
-
 import { getApiBase } from "../api/base";
+import { authFetch } from "../api/authFetch";
 const API = getApiBase() + "/backend";
 
 const EmployeeMedicines = () => {
@@ -29,7 +29,7 @@ const EmployeeMedicines = () => {
     batchNumber: "",
     reason: "",
   });
-  const [branches, setBranches] = useState([]);
+  // Branches removed; branch auto-detected from session
   const [submitting, setSubmitting] = useState(false);
 
   const load = useCallback(async () => {
@@ -104,23 +104,45 @@ const EmployeeMedicines = () => {
     setOpenRow(null);
   }, [search, categoryFilter, expiryFilter, list.length]);
 
-  const openRequest = (m) => {
+  // Derive branchId from session/localStorage or /auth/me
+  const openRequest = async (m) => {
+    let branchId = "";
+    try {
+      const stored = localStorage.getItem("user");
+      if (stored) {
+        const u = JSON.parse(stored);
+        if (u.branch) branchId = u.branch._id || u.branch;
+        else if (Array.isArray(u.branches) && u.branches.length === 1) {
+          branchId = u.branches[0]._id || u.branches[0];
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    if (!branchId) {
+      // Fallback: fetch /auth/me
+      try {
+        const res = await fetch(`${API}/auth/me`, { credentials: "include" });
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.user?.branch)
+            branchId = data.user.branch._id || data.user.branch;
+        }
+      } catch {
+        /* ignore */
+      }
+    }
     setRequestForm((f) => ({
       ...f,
       medicineId: m._id,
       quantity: "",
-      branchId: "",
+      branchId,
       batchNumber: "",
       reason: "",
     }));
     setRequestOpen(true);
-    if (branches.length === 0) {
-      fetch(`${API}/location/branch`)
-        .then((r) => r.json())
-        .then((b) => Array.isArray(b) && setBranches(b))
-        .catch(() => {});
-    }
   };
+  // Use authFetch and auto-branch
   const submitRequest = async (e) => {
     e.preventDefault();
     if (
@@ -131,12 +153,11 @@ const EmployeeMedicines = () => {
       return;
     setSubmitting(true);
     try {
-      const res = await fetch(`${API}/inventory/request`, {
+      const res = await authFetch(`${API}/inventory/request`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           medicineId: requestForm.medicineId,
-          branchId: requestForm.branchId,
           quantity: Number(requestForm.quantity),
           batchNumber: requestForm.batchNumber || undefined,
           reason: requestForm.reason || undefined,
@@ -566,29 +587,6 @@ const EmployeeMedicines = () => {
                 </button>
               </div>
               <form onSubmit={submitRequest} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">
-                    Branch
-                  </label>
-                  <select
-                    value={requestForm.branchId}
-                    onChange={(e) =>
-                      setRequestForm((f) => ({
-                        ...f,
-                        branchId: e.target.value,
-                      }))
-                    }
-                    required
-                    className="w-full px-3 py-2 rounded bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                  >
-                    <option value="">Select branch</option>
-                    {branches.map((b) => (
-                      <option key={b._id} value={b._id}>
-                        {b.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-2">
                     Quantity

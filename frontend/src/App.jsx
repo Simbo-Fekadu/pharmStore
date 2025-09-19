@@ -20,11 +20,15 @@ import BranchRequest from "./components/BranchRequest";
 import Fulfillment from "./components/Fulfillment";
 import AdminRequestCenter from "./components/AdminRequestCenter";
 import AdminTransactions from "./components/AdminTransactions";
+import AdminSales from "./components/AdminSales";
 import EmployeeLayout from "./components/EmployeeLayout";
 import EmployeeDashboard from "./components/EmployeeDashboard";
 import EmployeeMedicines from "./components/EmployeeMedicines";
 import BranchMedicines from "./components/BranchMedicines";
+import EmployeeSales from "./components/EmployeeSales";
+import EmployeeSalesHistory from "./components/EmployeeSalesHistory";
 import Chat from "./components/Chat";
+
 function App() {
   const fileProtocol =
     typeof window !== "undefined" && window.location.protocol === "file:";
@@ -48,6 +52,7 @@ function App() {
           <Route path="inventory/store" element={<AdminInventory />} />
           <Route path="inventory/branches" element={<AdminRequestCenter />} />
           <Route path="chat" element={<Chat />} />
+          <Route path="sales" element={<AdminSales />} />
           <Route path="transactions" element={<AdminTransactions />} />
           <Route path="users" element={<AdminUsers />} />
           <Route path="suppliers" element={<AdminSuppliers />} />
@@ -60,6 +65,8 @@ function App() {
           <Route path="requests" element={<BranchRequest />} />
           <Route path="chat" element={<Chat />} />
           <Route path="fulfillment" element={<Fulfillment />} />
+          <Route path="sales" element={<EmployeeSales />} />
+          <Route path="sales/history" element={<EmployeeSalesHistory />} />
         </Route>
       </Routes>
     </RouterImpl>

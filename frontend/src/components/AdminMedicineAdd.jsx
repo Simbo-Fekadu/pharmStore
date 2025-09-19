@@ -10,18 +10,24 @@ const empty = {
   brand: "",
   category: "Tablet",
   unit: "Packet",
+  baseUnit: "",
+  packUnit: "",
+  packSize: "",
   batchNumber: "",
   expiryDate: "",
   description: "",
   purchasePrice: "",
   quantity: "",
   sellingPrice: "",
+  sellingPriceBase: "",
+  sellingPricePack: "",
   supplier: "",
   storeId: "",
 };
 
 const AdminMedicineAdd = () => {
   const [form, setForm] = useState(empty);
+  const [quantityUnit, setQuantityUnit] = useState("pack"); // auto: 'pack' for Packet/Box, otherwise 'base'
   const [stores, setStores] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [supplierInput, setSupplierInput] = useState("");
@@ -30,7 +36,8 @@ const AdminMedicineAdd = () => {
   const [message, setMessage] = useState("");
   const [isError, setIsError] = useState(false);
   const [editingId] = useState(null);
-  const [sellingDirty, setSellingDirty] = useState(false); // track if user edited selling
+  const [priceEdited, setPriceEdited] = useState({ pack: false, base: false });
+  // pricing is derived automatically from selected unit and counts
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -52,40 +59,148 @@ const AdminMedicineAdd = () => {
     })();
   }, []);
 
-  // Default and auto-convert behavior for Selling Price
+  // Derive units (base/pack) and quantity unit from selected unit
+  useEffect(() => {
+    // Auto-set quantity unit: Packet/Box => pack; others => base
+    if (form.unit === "Packet" || form.unit === "Box") {
+      if (quantityUnit !== "pack") setQuantityUnit("pack");
+    } else if (quantityUnit !== "base") {
+      setQuantityUnit("base");
+    }
+
+    // Derive baseUnit/packUnit from unit selection
+    let derivedBase = form.baseUnit;
+    let derivedPack = form.packUnit;
+    if (form.unit === "Packet") {
+      derivedBase = "Strip";
+      derivedPack = "Packet";
+    } else if (form.unit === "Box") {
+      derivedBase = "Ampule";
+      derivedPack = "Box";
+    } else {
+      derivedBase = form.unit || "";
+      derivedPack = "";
+    }
+    if (derivedBase !== form.baseUnit || derivedPack !== form.packUnit) {
+      setForm((prev) => ({
+        ...prev,
+        baseUnit: derivedBase,
+        packUnit: derivedPack,
+      }));
+      // reset price edit flags when switching unit types
+      setPriceEdited({ pack: false, base: false });
+    }
+  }, [form.unit, form.baseUnit, form.packUnit, quantityUnit]);
+
+  // Utilities for rounding
+  const ceil2 = (n) => Math.ceil(n * 100) / 100;
+  const round2 = (n) => Math.round(n * 100) / 100;
+
+  // Auto-fill selling prices dynamically: reacts to purchase, category, packSize, and unit.
   useEffect(() => {
     const p = parseFloat(form.purchasePrice);
+    if (!Number.isFinite(p) || p <= 0) return;
     const factor = form.category === "Cosmetics" ? 1.35 : 1.25;
-    const computed =
-      Number.isFinite(p) && p > 0
-        ? String(Math.round(p * factor * 100) / 100)
-        : "";
+    const packSizeNum = parseInt(form.packSize) || 0;
 
-    if (!sellingDirty) {
-      // Auto-fill and keep in sync when user hasn't edited selling
-      if (form.sellingPrice !== computed) {
-        setForm((prev) => ({ ...prev, sellingPrice: computed }));
+    if (form.unit === "Packet" || form.unit === "Box") {
+      // Recompute pack price from purchase unless user manually edited the pack price
+      if (!priceEdited.pack) {
+        const packPrice = round2(p * factor);
+        setForm((prev) => ({
+          ...prev,
+          sellingPricePack: String(packPrice),
+          sellingPrice: String(packPrice),
+        }));
       }
-      return;
+      // Recompute per-piece from current pack price unless user edited base price
+      const currentPack = parseFloat(form.sellingPricePack);
+      if (
+        packSizeNum > 0 &&
+        Number.isFinite(currentPack) &&
+        currentPack > 0 &&
+        !priceEdited.base
+      ) {
+        const perPiece = ceil2(currentPack / packSizeNum);
+        setForm((prev) => ({ ...prev, sellingPriceBase: String(perPiece) }));
+      }
+    } else {
+      // Single-unit item: recompute base price unless user manually edited base price
+      if (!priceEdited.base) {
+        const basePrice = round2(p * factor);
+        setForm((prev) => ({
+          ...prev,
+          sellingPriceBase: String(basePrice),
+          sellingPrice: String(basePrice),
+          sellingPricePack: "",
+        }));
+      }
     }
+  }, [
+    form.purchasePrice,
+    form.category,
+    form.unit,
+    form.packSize,
+    form.sellingPricePack,
+    priceEdited.pack,
+    priceEdited.base,
+  ]);
 
-    // If user-provided looks like a multiplier, convert it immediately
-    const sNum = parseFloat(form.sellingPrice);
-    if (Number.isFinite(p) && Number.isFinite(sNum) && sNum > 0 && sNum <= 3) {
-      const conv = String(Math.round(p * sNum * 100) / 100);
-      if (form.sellingPrice !== conv) {
-        setForm((prev) => ({ ...prev, sellingPrice: conv }));
-      }
-    }
-  }, [form.purchasePrice, form.category, form.sellingPrice, sellingDirty]);
+  // When purchase price or category changes, re-enable dynamic pricing
+  useEffect(() => {
+    setPriceEdited({ pack: false, base: false });
+  }, [form.purchasePrice, form.category]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    if (name === "sellingPrice") {
-      // typing into selling makes it user-controlled; clearing re-enables auto
-      setSellingDirty(value !== "");
-    }
+    // simple handler; derived fields are computed in useEffect
     setForm((p) => ({ ...p, [name]: value }));
+  };
+
+  const handlePackPriceChange = (e) => {
+    const v = e.target.value;
+    setForm((prev) => {
+      const packSizeNum = parseInt(prev.packSize) || 0;
+      const next = { ...prev, sellingPricePack: v };
+      if (
+        (prev.unit === "Packet" || prev.unit === "Box") &&
+        v !== "" &&
+        packSizeNum > 0
+      ) {
+        const perPiece = ceil2((parseFloat(v) || 0) / packSizeNum);
+        if (Number.isFinite(perPiece) && perPiece > 0)
+          next.sellingPriceBase = String(perPiece);
+      }
+      // keep legacy sellingPrice aligned (used by some lists)
+      next.sellingPrice = v;
+      return next;
+    });
+    setPriceEdited((p) => ({ ...p, pack: true }));
+  };
+
+  const handleBasePriceChange = (e) => {
+    const v = e.target.value;
+    setForm((prev) => {
+      const packSizeNum = parseInt(prev.packSize) || 0;
+      const next = { ...prev, sellingPriceBase: v };
+      if (
+        (prev.unit === "Packet" || prev.unit === "Box") &&
+        v !== "" &&
+        packSizeNum > 0
+      ) {
+        const packPrice = round2((parseFloat(v) || 0) * packSizeNum);
+        if (Number.isFinite(packPrice) && packPrice > 0) {
+          next.sellingPricePack = String(packPrice);
+          next.sellingPrice = String(packPrice);
+        }
+      } else {
+        // not a pack: legacy mirrors base
+        next.sellingPrice = v;
+        next.sellingPricePack = "";
+      }
+      return next;
+    });
+    setPriceEdited((p) => ({ ...p, base: true }));
   };
 
   const handleSubmit = async (e) => {
@@ -95,19 +210,23 @@ const AdminMedicineAdd = () => {
     setIsError(false);
     try {
       // If sellingPrice is blank, omit and let server default apply; otherwise use user's value
-      let selling = form.sellingPrice;
+      // Prepare payload respecting per-unit prices
+      let selling = form.sellingPrice; // legacy value used by older views
       const pNum = parseFloat(form.purchasePrice);
-      const sNum = parseFloat(form.sellingPrice);
-      // If user typed a multiplier (e.g., 1.35) instead of absolute price, convert to price
+      const sBase = parseFloat(form.sellingPriceBase);
+      const sPack = parseFloat(form.sellingPricePack);
+      const packSizeNum = parseInt(form.packSize) || 0;
+      // If user typed a multiplier in legacy selling, convert
+      const sLegacyNum = parseFloat(form.sellingPrice);
       if (
-        sNum &&
+        sLegacyNum &&
         pNum &&
-        Number.isFinite(sNum) &&
+        Number.isFinite(sLegacyNum) &&
         Number.isFinite(pNum) &&
-        sNum > 0 &&
-        sNum <= 3
+        sLegacyNum > 0 &&
+        sLegacyNum <= 3
       ) {
-        selling = String(Math.round(pNum * sNum * 100) / 100);
+        selling = String(Math.round(pNum * sLegacyNum * 100) / 100);
       }
       const payload = {
         ...form,
@@ -115,6 +234,17 @@ const AdminMedicineAdd = () => {
         quantity: form.quantity ? Number(form.quantity) : 0,
         sellingPrice:
           selling !== "" && selling != null ? Number(selling) : undefined,
+        baseUnit: form.baseUnit || undefined,
+        packUnit: form.packUnit || (packSizeNum > 1 ? form.unit : undefined),
+        packSize: packSizeNum > 1 ? packSizeNum : undefined,
+        sellingPriceBase:
+          Number.isFinite(sBase) && sBase > 0 ? Number(sBase) : undefined,
+        sellingPricePack:
+          packSizeNum > 1 && Number.isFinite(sPack) && sPack > 0
+            ? Number(sPack)
+            : undefined,
+        initialQuantityUnit:
+          form.unit === "Packet" || form.unit === "Box" ? "pack" : "base",
       };
       if (!payload.storeId || !payload.storeId.trim()) delete payload.storeId;
       if (!payload.supplier || !payload.supplier.trim())
@@ -244,20 +374,52 @@ const AdminMedicineAdd = () => {
                     onChange={handleChange}
                     className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                   >
-                    {["Packet", "Strip", "Tube", "Bottle", "Others"].map(
-                      (u) => (
-                        <option key={u} value={u}>
-                          {u}
-                        </option>
-                      )
-                    )}
+                    {[
+                      "Packet",
+                      "Box",
+                      "Ampule",
+                      "Tube",
+                      "Bottle",
+                      "Others",
+                    ].map((u) => (
+                      <option key={u} value={u}>
+                        {u}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
+              {/* Pack mapping: Packet -> Strips per Packet, Box -> Ampules per Box */}
+              {(form.unit === "Packet" || form.unit === "Box") && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-sm font-medium text-foreground mb-2 block">
+                      {form.unit === "Packet"
+                        ? "Strips per Packet"
+                        : "Ampules per Box"}
+                    </label>
+                    <input
+                      type="number"
+                      name="packSize"
+                      value={form.packSize}
+                      onChange={handleChange}
+                      min="1"
+                      placeholder={
+                        form.unit === "Packet" ? "e.g., 10" : "e.g., 10"
+                      }
+                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                    />
+                  </div>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-sm font-medium text-foreground mb-2 block">
-                    Quantity
+                    Quantity (
+                    {quantityUnit === "pack"
+                      ? form.packUnit || "Pack"
+                      : form.baseUnit || "Unit"}
+                    )
                   </label>
                   <input
                     type="number"
@@ -282,6 +444,7 @@ const AdminMedicineAdd = () => {
                   />
                 </div>
               </div>
+              {/* quantity treated as pack for Packet/Box; base otherwise */}
             </div>
           </section>
 
@@ -292,7 +455,7 @@ const AdminMedicineAdd = () => {
                 Pricing
               </h2>
             </header>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div>
                 <label className="text-sm font-medium text-foreground mb-2 block">
                   Purchase Price *
@@ -307,26 +470,60 @@ const AdminMedicineAdd = () => {
                   className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                 />
               </div>
-              <div>
-                <label className="text-sm font-medium text-foreground mb-2 block">
-                  Selling Price
-                </label>
-                <input
-                  type="number"
-                  name="sellingPrice"
-                  value={form.sellingPrice}
-                  onChange={handleChange}
-                  placeholder={(function () {
-                    const p = parseFloat(form.purchasePrice);
-                    const factor = form.category === "Cosmetics" ? 1.35 : 1.25;
-                    if (Number.isFinite(p) && p > 0) {
-                      return (Math.round(p * factor * 100) / 100).toFixed(2);
-                    }
-                    return "Auto";
-                  })()}
-                  className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                />
-              </div>
+              {form.unit === "Packet" || form.unit === "Box" ? (
+                <>
+                  <div>
+                    <label className="text-sm font-medium text-foreground mb-1 block">
+                      Selling Price (per {form.unit})
+                    </label>
+                    <input
+                      type="number"
+                      name="sellingPricePack"
+                      value={form.sellingPricePack}
+                      onChange={handlePackPriceChange}
+                      placeholder="0.00"
+                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                    />
+                    <div className="text-xs text-muted-foreground mt-1">
+                      Changing this will set per-
+                      {form.unit === "Packet" ? "strip" : "ampule"} by dividing
+                      and rounding up.
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-foreground mb-1 block">
+                      Selling Price (per{" "}
+                      {form.unit === "Packet" ? "Strip" : "Ampule"})
+                    </label>
+                    <input
+                      type="number"
+                      name="sellingPriceBase"
+                      value={form.sellingPriceBase}
+                      onChange={handleBasePriceChange}
+                      placeholder="0.00"
+                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                    />
+                    <div className="text-xs text-muted-foreground mt-1">
+                      Changing this will set per-{form.unit.toLowerCase()} by
+                      multiplying.
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div>
+                  <label className="text-sm font-medium text-foreground mb-1 block">
+                    Selling Price (per {form.unit || "unit"})
+                  </label>
+                  <input
+                    type="number"
+                    name="sellingPriceBase"
+                    value={form.sellingPriceBase}
+                    onChange={handleBasePriceChange}
+                    placeholder="0.00"
+                    className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                  />
+                </div>
+              )}
             </div>
           </section>
 

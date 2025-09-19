@@ -2,6 +2,8 @@ import React, { useState, useEffect } from "react";
 import { ChevronDown, ChevronRight, Search, Filter } from "lucide-react";
 
 import { getApiBase } from "../api/base";
+import { authFetch } from "../api/authFetch";
+import { ceilOrDash, ceilCurrency } from "../utils/number";
 const API = getApiBase() + "/backend";
 
 // Branch medicine list styled like AdminMedicines (read-only subset)
@@ -14,6 +16,8 @@ const BranchMedicines = () => {
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [openRow, setOpenRow] = useState(null);
+  const [page, setPage] = useState(1);
+  const pageSize = 15;
 
   // Derive branch from user (single branch) or keep dropdown
   useEffect(() => {
@@ -50,7 +54,7 @@ const BranchMedicines = () => {
     setMessage("");
     setOpenRow(null);
     try {
-      const res = await fetch(`${API}/inventory/branch/${id}/medicines`);
+      const res = await authFetch(`${API}/inventory/branch/${id}/medicines`);
       const data = await res.json();
       if (res.ok && data.success) {
         const meds = (data.medicines || []).map((m) => ({
@@ -58,6 +62,7 @@ const BranchMedicines = () => {
           expiryDate: m.expiryDate || m.expiry || new Date().toISOString(),
         }));
         setItems(meds);
+        setPage(1);
         if (meds.length === 0) setMessage("No stock for this branch");
       } else setMessage(data.message || "Failed loading branch medicines");
     } catch {
@@ -83,6 +88,12 @@ const BranchMedicines = () => {
     .filter(Boolean)
     .sort();
 
+  // Pagination
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const startIdx = (currentPage - 1) * pageSize;
+  const pageItems = filtered.slice(startIdx, startIdx + pageSize);
+
   return (
     <div className="min-h-screen text-foreground">
       <div className="p-4 md:p-6 max-w-6xl mx-auto space-y-6">
@@ -91,7 +102,8 @@ const BranchMedicines = () => {
             <div>
               <h2 className="text-lg font-semibold">Branch Medicines</h2>
               <p className="text-sm text-muted-foreground mt-1">
-                {filtered.length} item{filtered.length !== 1 ? "s" : ""} shown
+                {filtered.length} item{filtered.length !== 1 ? "s" : ""} found ·
+                Page {currentPage} of {totalPages}
               </p>
             </div>
             <div className="flex flex-col md:flex-row gap-3 md:items-center">
@@ -146,6 +158,7 @@ const BranchMedicines = () => {
                   onClick={() => {
                     setSearch("");
                     setCategoryFilter("all");
+                    setPage(1);
                   }}
                   className="px-3 py-2 text-sm bg-muted hover:bg-muted/80 text-muted-foreground rounded-lg transition-colors"
                 >
@@ -194,7 +207,7 @@ const BranchMedicines = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {filtered.map((m) => {
+                    {pageItems.map((m) => {
                       const isOpen = openRow === m._id;
                       return (
                         <>
@@ -233,7 +246,7 @@ const BranchMedicines = () => {
                               {m.batchNumber || "—"}
                             </td>
                             <td className="py-3 px-4 text-muted-foreground">
-                              {m.quantity}
+                              {ceilOrDash(m.quantity)}
                             </td>
                           </tr>
                           {isOpen && (
@@ -282,14 +295,16 @@ const BranchMedicines = () => {
                                       <span className="text-muted-foreground/60">
                                         Remaining:
                                       </span>{" "}
-                                      <span>{m.quantity}</span>
+                                      <span>{ceilOrDash(m.quantity)}</span>
                                     </div>
                                     {m.purchasePrice != null && (
                                       <div className="flex justify-between">
                                         <span className="text-muted-foreground/60">
                                           Purchase Price:
                                         </span>{" "}
-                                        <span>Br {m.purchasePrice}</span>
+                                        <span>
+                                          {ceilCurrency(m.purchasePrice)}
+                                        </span>
                                       </div>
                                     )}
                                     {m.sellingPrice != null && (
@@ -297,7 +312,9 @@ const BranchMedicines = () => {
                                         <span className="text-muted-foreground/60">
                                           Selling Price:
                                         </span>{" "}
-                                        <span>Br {m.sellingPrice}</span>
+                                        <span>
+                                          {ceilCurrency(m.sellingPrice)}
+                                        </span>
                                       </div>
                                     )}
                                   </div>
@@ -321,13 +338,33 @@ const BranchMedicines = () => {
                     })}
                   </tbody>
                 </table>
+                {/* Pagination controls */}
+                <div className="flex items-center justify-between px-4 py-3 border-t border-border">
+                  <button
+                    className="px-3 py-1.5 rounded border border-border bg-muted disabled:opacity-50"
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage <= 1}
+                  >
+                    Previous
+                  </button>
+                  <div className="text-sm text-muted-foreground">
+                    Page {currentPage} of {totalPages}
+                  </div>
+                  <button
+                    className="px-3 py-1.5 rounded border border-border bg-muted disabled:opacity-50"
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage >= totalPages}
+                  >
+                    Next
+                  </button>
+                </div>
               </div>
             )}
           </div>
           {/* Mobile list */}
           {!loading && filtered.length > 0 && (
             <div className="md:hidden divide-y divide-border">
-              {filtered.map((m) => {
+              {pageItems.map((m) => {
                 const isOpen = openRow === m._id;
                 return (
                   <div key={m._id} className="p-4">
@@ -344,7 +381,7 @@ const BranchMedicines = () => {
                         {m.name}
                       </span>
                       <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded">
-                        Qty {m.quantity}
+                        Qty {ceilOrDash(m.quantity)}
                       </span>
                     </button>
                     {isOpen && (
@@ -372,7 +409,7 @@ const BranchMedicines = () => {
                             <span className="text-muted-foreground/70">
                               Purchase:
                             </span>{" "}
-                            {m.purchasePrice}
+                            {ceilCurrency(m.purchasePrice)}
                           </div>
                         )}
                         {m.sellingPrice != null && (
@@ -380,7 +417,7 @@ const BranchMedicines = () => {
                             <span className="text-muted-foreground/70">
                               Selling:
                             </span>{" "}
-                            {m.sellingPrice}
+                            {ceilCurrency(m.sellingPrice)}
                           </div>
                         )}
                       </div>
@@ -388,6 +425,26 @@ const BranchMedicines = () => {
                   </div>
                 );
               })}
+              {/* Mobile pagination */}
+              <div className="flex items-center justify-between px-4 py-3">
+                <button
+                  className="px-3 py-1.5 rounded border border-border bg-muted disabled:opacity-50"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage <= 1}
+                >
+                  Previous
+                </button>
+                <div className="text-sm text-muted-foreground">
+                  Page {currentPage} of {totalPages}
+                </div>
+                <button
+                  className="px-3 py-1.5 rounded border border-border bg-muted disabled:opacity-50"
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage >= totalPages}
+                >
+                  Next
+                </button>
+              </div>
             </div>
           )}
         </div>

@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: pharmstore-backend
+    env: node
+    rootDir: backend
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 18
+      - key: PORT
+        value: 3000
+      # Set your frontend origins (comma separated) so CORS allows them
+      # Example for a Render static site and local dev:
+      # - key: FRONTEND_ORIGINS
+      #   value: https://your-frontend.onrender.com,http://localhost:5173
+      # Required secrets set in the Render dashboard (not committed):
+      # - key: MONGO_URL
+      # - key: SECRET
+    healthCheckPath: /backend/ping

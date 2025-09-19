@@ -8,8 +8,6 @@ import {
   BarChart3,
   DollarSign,
   Coins,
-  TrendingUp,
-  Tag,
 } from "lucide-react";
 import { getApiBase } from "../api/base";
 const API = getApiBase() + "/backend";
@@ -27,6 +25,11 @@ const AdminDashboard = () => {
   const [range, setRange] = useState("30"); // days window (kept for future trend integration)
   const [medicines, setMedicines] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [todaySales, setTodaySales] = useState({
+    totalAmount: 0,
+    totalPurchaseAmount: 0,
+    totalTransactions: 0,
+  });
   const formatBirr = (v) =>
     typeof v !== "number" || !isFinite(v)
       ? "Br 0"
@@ -70,6 +73,26 @@ const AdminDashboard = () => {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Load today's total sales across all branches
+  useEffect(() => {
+    const fetchToday = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const res = await fetch(`${API}/sales/admin/today-total`, {
+          credentials: "include",
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        });
+        const data = await res.json();
+        if (res.ok && data?.success) setTodaySales(data);
+      } catch {
+        /* ignore */
+      }
+    };
+    fetchToday();
+    const id = setInterval(fetchToday, 60_000); // refresh every 60s
+    return () => clearInterval(id);
+  }, []);
 
   // Price metrics (derived from medicines)
   const priceStats = useMemo(() => {
@@ -145,6 +168,7 @@ const AdminDashboard = () => {
           </button>
         </div>
       </div>
+      {/* Metrics: single grid (2 rows x 4 cols on xl) */}
       <div className="grid grid-cols-2 md:grid-cols-2 xl:grid-cols-4 gap-4 md:gap-6">
         <MetricCard
           icon={<Package className="w-6 h-6" />}
@@ -185,10 +209,16 @@ const AdminDashboard = () => {
           subtitle={`${pct(stats.deleted, baseTotal)}% of total incl. trash`}
           onClick={() => navigate("/admin/medicines/trash")}
         />
-      </div>
-
-      {/* Price metrics */}
-      <div className="grid grid-cols-2 md:grid-cols-2 xl:grid-cols-4 gap-4 md:gap-6">
+        <MetricCard
+          icon={<DollarSign className="w-6 h-6" />}
+          iconColor="emerald"
+          value={formatBirr(todaySales.totalAmount)}
+          label="Today's Total Sales"
+          percent={0}
+          subtitle={`${todaySales.totalTransactions || 0} transactions`}
+          onClick={() => navigate("/admin/sales")}
+        />
+        {/* Price metrics moved into the same grid */}
         <MetricCard
           icon={<DollarSign className="w-6 h-6" />}
           iconColor="emerald"
@@ -206,20 +236,12 @@ const AdminDashboard = () => {
           subtitle={`${priceStats.covCost}% units priced (cost)`}
         />
         <MetricCard
-          icon={<TrendingUp className="w-6 h-6" />}
-          iconColor="amber"
-          value={formatBirr(priceStats.gross)}
-          label="Potential Gross Profit"
-          percent={priceStats.gmPct}
-          subtitle={`${priceStats.gmPct}% margin`}
-        />
-        <MetricCard
-          icon={<Tag className="w-6 h-6" />}
-          iconColor="emerald"
-          value={formatBirr(priceStats.avgSell)}
-          label="Avg Sell Price / Unit"
-          percent={priceStats.covSell}
-          subtitle={`${priceStats.covSell}% coverage`}
+          icon={<Coins className="w-6 h-6" />}
+          iconColor="slate"
+          value={formatBirr(todaySales.totalPurchaseAmount)}
+          label="Today's Purchase Cost"
+          percent={0}
+          subtitle="Cost baseline for sold items"
         />
       </div>
       {/* Charts (side by side on desktop) */}

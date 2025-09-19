@@ -13,6 +13,8 @@ import {
   postLedger,
   getStock,
   getBranchMedicines,
+  clearBranchMedicines,
+  getCentralAvailable,
 } from "../controllers/inventory.controller.js";
 import {
   verifyToken,
@@ -63,10 +65,18 @@ router.post("/request/:id/message", verifyToken, addRequestMessage);
 
 // Branch owned medicines (stock currently at that branch)
 router.get("/branch/:branchId/medicines", getBranchMedicines);
+// Admin: clear branch medicines (delete StockBalance for branch or all)
+router.delete(
+  "/branch/:branchId/medicines",
+  verifyToken,
+  requireAdmin,
+  clearBranchMedicines
+);
 
 // Ledger and stock balance endpoints
 router.post("/ledger", verifyToken, requireInventoryAccess, postLedger);
 router.get("/stock", getStock);
+router.get("/stock/central", getCentralAvailable);
 router.get("/ledger", verifyToken, getLedgerHistory);
 router.post(
   "/transfer/direct",

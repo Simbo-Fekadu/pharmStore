@@ -99,3 +99,20 @@ export const createEmployee = async (req, res) => {
     res.status(400).json({ success: false, message: error.message });
   }
 };
+
+// List employees in current user's branch (accessible to any authenticated user)
+export const listMyBranchEmployees = async (req, res) => {
+  try {
+    const branchId = req.user?.branch;
+    if (!branchId) {
+      return res.status(200).json({ success: true, users: [] });
+    }
+    const users = await User.find({
+      branch: branchId,
+      role: { $in: ["employee", "inventory_manager"] },
+    }).select("_id username email role branch");
+    res.status(200).json({ success: true, users });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+};

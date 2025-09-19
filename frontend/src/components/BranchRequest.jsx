@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ceilOrDash, ceilCurrency } from "../utils/number";
 
 import { getApiBase } from "../api/base";
 const API = getApiBase() + "/backend";
@@ -8,6 +9,7 @@ const BranchRequest = () => {
   // branches removed; single branch derived from session
   const [selectedMed, setSelectedMed] = useState(null);
   const [centralAvailable, setCentralAvailable] = useState(null);
+  const [noBalanceRecord, setNoBalanceRecord] = useState(false);
   const [form, setForm] = useState({
     medicineId: "",
     branchId: "",
@@ -67,21 +69,27 @@ const BranchRequest = () => {
     if (!form.medicineId) {
       setSelectedMed(null);
       setCentralAvailable(null);
+      setNoBalanceRecord(false);
       return;
     }
     const med = medicines.find((m) => m._id === form.medicineId);
     setSelectedMed(med || null);
-    // Fetch central stock for this medicine
-    fetch(
-      `${API}/inventory/stock?medicineId=${form.medicineId}&locationId=main&includeZero=true`
-    )
+    // Fetch accurate central stock for this medicine (backend aggregates and falls back to legacy if needed)
+    fetch(`${API}/inventory/stock/central?medicineId=${form.medicineId}`)
       .then((r) => r.json())
       .then((data) => {
-        if (data.success && Array.isArray(data.balances)) {
-          setCentralAvailable(data.balances[0]?.onHandQty || 0);
-        } else setCentralAvailable(null);
+        if (data.success && typeof data.available === "number") {
+          setCentralAvailable(data.available);
+          setNoBalanceRecord(data.source === "none");
+        } else {
+          setCentralAvailable(null);
+          setNoBalanceRecord(false);
+        }
       })
-      .catch(() => setCentralAvailable(null));
+      .catch(() => {
+        setCentralAvailable(null);
+        setNoBalanceRecord(false);
+      });
   }, [form.medicineId, medicines]);
 
   const handleChange = (e) => {
@@ -248,9 +256,9 @@ const BranchRequest = () => {
               {selectedMed.brand && `• ${selectedMed.brand}`}
             </div>
             <div>Category: {selectedMed.category}</div>
-            <div>Purchase Price: {selectedMed.purchasePrice}</div>
+            <div>Purchase Price: {ceilCurrency(selectedMed.purchasePrice)}</div>
             {selectedMed.sellingPrice && (
-              <div>Selling Price: {selectedMed.sellingPrice}</div>
+              <div>Selling Price: {ceilCurrency(selectedMed.sellingPrice)}</div>
             )}
             {selectedMed.supplier && (
               <div>
@@ -260,8 +268,8 @@ const BranchRequest = () => {
             )}
             {centralAvailable != null && (
               <div>
-                Central Available: {centralAvailable}
-                {centralAvailable === 0 && (
+                Central Available: {ceilOrDash(centralAvailable)}
+                {centralAvailable === 0 && noBalanceRecord && (
                   <span className="ml-2 text-amber-300">
                     (No balance record; may be legacy)
                   </span>

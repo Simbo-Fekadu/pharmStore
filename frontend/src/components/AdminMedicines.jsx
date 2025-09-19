@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 
 import { getApiBase } from "../api/base";
+import { ceilCurrency, ceilOrDash } from "../utils/number";
 import { authFetch } from "../api/authFetch";
 const API = getApiBase() + "/backend";
 
@@ -22,10 +23,7 @@ const AdminMedicines = () => {
       const bT = new Date(b?.updatedAt || b?.createdAt || 0).getTime();
       return bT - aT;
     });
-  const formatBirr = (v) =>
-    v == null || v === "" || isNaN(Number(v))
-      ? "—"
-      : `Br ${Number(v).toFixed(2)}`;
+  const formatBirr = (v) => ceilCurrency(v);
   const sellingValue = (m) => {
     const pp = Number(m.purchasePrice);
     const sp = Number(m.sellingPrice);
@@ -418,9 +416,9 @@ const AdminMedicines = () => {
                                     Remaining
                                   </p>
                                   <p className="text-foreground font-medium">
-                                    {m.remainingQuantity ??
-                                      m.initialQuantity ??
-                                      "—"}
+                                    {ceilOrDash(
+                                      m.remainingQuantity ?? m.initialQuantity
+                                    )}
                                   </p>
                                 </div>
                                 <div className="space-y-1">
@@ -659,7 +657,7 @@ const AdminMedicines = () => {
                                               Sent Out:
                                             </span>
                                             <span className="text-foreground">
-                                              {m.sentOut ?? "—"}
+                                              {ceilOrDash(m.sentOut)}
                                             </span>
                                           </div>
                                           <div className="flex justify-between">
@@ -667,9 +665,10 @@ const AdminMedicines = () => {
                                               Remaining:
                                             </span>
                                             <span className="text-foreground font-medium">
-                                              {m.remainingQuantity ??
-                                                m.initialQuantity ??
-                                                "—"}
+                                              {ceilOrDash(
+                                                m.remainingQuantity ??
+                                                  m.initialQuantity
+                                              )}
                                             </span>
                                           </div>
                                           <div className="flex justify-between">

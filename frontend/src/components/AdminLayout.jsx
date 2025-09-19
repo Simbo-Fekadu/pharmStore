@@ -19,6 +19,7 @@ const links = [
   { to: "/admin/medicines/add", label: "Add Medicine" },
   { to: "/admin/medicines/near-expiry", label: "Near Expiry" },
   { to: "/admin/medicines/trash", label: "Trash" },
+  { to: "/admin/sales", label: "Sales" },
   { to: "/admin/users", label: "Users" },
   { to: "/admin/suppliers", label: "Suppliers" },
   { to: "/admin/branches", label: "Branches" },
@@ -79,6 +80,7 @@ const AdminLayout = () => {
     if (p.startsWith("/admin/inventory/store")) return "Store Stock";
     if (p.startsWith("/admin/inventory/branches")) return "Branch Requests";
     if (p.startsWith("/admin/inventory")) return "Inventory";
+    if (p.startsWith("/admin/sales")) return "Sales";
     if (p.startsWith("/admin/users")) return "Users";
     if (p.startsWith("/admin/suppliers")) return "Suppliers";
     if (p.startsWith("/admin/branches")) return "Branches";
@@ -174,7 +176,7 @@ const AdminLayout = () => {
         {/* Sidebar actions removed; moved to top navbar */}
       </aside>
       {/* Top navbar (visible on all sizes) */}
-      <div className="fixed top-0 left-0 right-0 z-30 bg-[var(--bg-start)]/90 backdrop-blur-sm border-b border-border px-4 py-3 flex items-center justify-between">
+      <div className="fixed top-0 left-0 right-0 z-30 bg-[var(--bg-start)]/90 backdrop-blur-sm border-b border-border px-4 py-3 flex items-center justify-between text-foreground">
         <div className="font-semibold text-foreground truncate">
           {pageTitle}
         </div>

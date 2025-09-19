@@ -7,6 +7,7 @@ const medicineSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    // Backward-compat unit field (treat as base unit if new fields not set)
     brand: {
       type: String,
       trim: true,
@@ -28,8 +29,12 @@ const medicineSchema = new mongoose.Schema(
     },
     unit: {
       type: String,
-      enum: ["Packet", "Strip", "Tube", "Bottle", "Others"],
+      enum: ["Packet", "Ampule", "Tube", "Bottle", "Box", "Others"],
     },
+    // New multi-unit support
+    baseUnit: { type: String }, // e.g., "Strip"
+    packUnit: { type: String }, // e.g., "Packet"
+    packSize: { type: Number, min: 1 }, // e.g., 1 Packet = packSize * baseUnit
     batchNumber: {
       type: String,
       required: true,
@@ -53,10 +58,11 @@ const medicineSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
-    sellingPrice: {
-      type: Number,
-      required: false,
-    },
+    // Legacy overall selling price (kept for compatibility)
+    sellingPrice: { type: Number, required: false },
+    // New per-unit prices
+    sellingPriceBase: { type: Number }, // price per base unit
+    sellingPricePack: { type: Number }, // price per pack unit
     supplier: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Supplier",
@@ -82,9 +88,29 @@ const medicineSchema = new mongoose.Schema(
 // Set sellingPrice to default margin if not provided
 // Cosmetics => 35% margin (1.35x), others => 25% margin (1.25x)
 medicineSchema.pre("save", function (next) {
+  // Default unit mapping
+  if (!this.baseUnit && this.unit) this.baseUnit = this.unit;
+  // Default legacy sellingPrice if missing
   if (this.sellingPrice == null) {
     const factor = this.category === "Cosmetics" ? 1.35 : 1.25;
     this.sellingPrice = this.purchasePrice * factor;
+  }
+  // Establish per-unit prices if possible
+  const ceil2 = (n) => Math.ceil(n * 100) / 100;
+  if (!this.sellingPriceBase) {
+    if (this.sellingPrice && this.packUnit && this.packSize > 1) {
+      // Treat legacy sellingPrice as pack price; derive per base with ceiling to avoid underpricing
+      this.sellingPriceBase = ceil2(this.sellingPrice / this.packSize);
+    } else if (this.sellingPrice) {
+      this.sellingPriceBase = this.sellingPrice;
+    }
+  }
+  if (!this.sellingPricePack) {
+    if (this.sellingPriceBase && this.packSize > 1) {
+      this.sellingPricePack = this.sellingPriceBase * this.packSize;
+    } else if (this.sellingPrice && this.packUnit && this.packSize > 1) {
+      this.sellingPricePack = this.sellingPrice; // legacy pack price provided
+    }
   }
   next();
 });

@@ -2,6 +2,7 @@ import bcryptjs from "bcryptjs";
 import User from "../models/user.model.js";
 import errorHandler from "../utils/error.js";
 import jwt from "jsonwebtoken";
+import { Types } from "mongoose";
 export const signup = async (req, res, next) => {
   const { username, email, password, role } = req.body;
   const hashedPassword = bcryptjs.hashSync(password, 10);
@@ -103,6 +104,26 @@ export const signout = async (req, res, next) => {
   try {
     res.clearCookie("access_token");
     res.status(200).json("User has logged out!");
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Return the authenticated user's profile (including branch)
+export const me = async (req, res, next) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId || !Types.ObjectId.isValid(userId)) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+    const user = await User.findById(userId).populate("branch");
+    if (!user) {
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
+    }
+    const { password: _p, ...safe } = user._doc;
+    res.status(200).json({ success: true, user: safe });
   } catch (error) {
     next(error);
   }

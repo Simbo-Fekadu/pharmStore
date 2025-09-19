@@ -225,6 +225,8 @@ app.use("/backend/user", userRouter);
 app.use("/backend/supplier", supplierRouter);
 app.use("/backend/branch", branchRouter);
 app.use("/backend/chat", chatRouter);
+import saleRouter from "./routes/sale.route.js";
+app.use("/backend/sales", saleRouter);
 
 app.get("/backend/ping", (_req, res) => {
   res.json({ ok: true, time: new Date().toISOString() });

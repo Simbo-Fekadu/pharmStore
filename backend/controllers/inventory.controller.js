@@ -670,12 +670,19 @@ export const getBranchMedicines = async (req, res) => {
       _id: b._id,
       medicineId: b.medicineId?._id,
       name: b.medicineId?.medicineName,
+      unit: b.medicineId?.unit, // legacy unit
+      baseUnit: b.medicineId?.baseUnit,
+      packUnit: b.medicineId?.packUnit,
+      packSize: b.medicineId?.packSize,
       brand: b.medicineId?.brand,
       category: b.medicineId?.category,
       supplier: b.medicineId?.supplier,
       purchasePrice: b.medicineId?.purchasePrice,
       sellingPrice: b.medicineId?.sellingPrice,
+      sellingPriceBase: b.medicineId?.sellingPriceBase,
+      sellingPricePack: b.medicineId?.sellingPricePack,
       batchNumber: b.medicineId?.batchNumber,
+      expiryDate: b.medicineId?.expiryDate,
       quantity: b.onHandQty || 0,
     }));
     res.json({ success: true, count: items.length, medicines: items });
@@ -925,5 +932,118 @@ export const cancelRequest = async (req, res) => {
       .json({ success: true, message: "Request cancelled", request });
   } catch (e) {
     res.status(400).json({ success: false, message: e.message });
+  }
+};
+
+// Central store availability for a single medicine (sums across all central stores if multiple)
+export const getCentralAvailable = async (req, res, next) => {
+  try {
+    const { medicineId } = req.query;
+    if (!medicineId || !mongoose.Types.ObjectId.isValid(medicineId)) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Valid medicineId required" });
+    }
+    const stores = await Store.find({}, "_id").lean();
+    const storeIds = stores.map((s) => s._id);
+    if (!storeIds.length) {
+      return res.json({ success: true, available: 0, source: "none" });
+    }
+    // 1) Sum StockBalance across all stores
+    const balAgg = await StockBalance.aggregate([
+      {
+        $match: {
+          medicineId: new mongoose.Types.ObjectId(medicineId),
+          locationId: { $in: storeIds },
+        },
+      },
+      { $group: { _id: null, total: { $sum: "$onHandQty" } } },
+    ]);
+    const balTotal = balAgg[0]?.total || 0;
+    if (balTotal > 0) {
+      return res.json({
+        success: true,
+        available: balTotal,
+        source: "balance",
+      });
+    }
+    // 2) Fallback to ledger net
+    const netAgg = await StockLedger.aggregate([
+      {
+        $match: {
+          medicineId: new mongoose.Types.ObjectId(medicineId),
+          locationId: { $in: storeIds },
+        },
+      },
+      { $group: { _id: null, net: { $sum: "$quantity" } } },
+    ]);
+    const net = netAgg[0]?.net || 0;
+    if (net > 0) {
+      return res.json({ success: true, available: net, source: "ledger" });
+    }
+    // 3) Legacy Inventory fallback (store type)
+    const invAgg = await Inventory.aggregate([
+      {
+        $match: {
+          medicine: new mongoose.Types.ObjectId(medicineId),
+          locationType: "Store",
+          locationId: { $in: storeIds },
+        },
+      },
+      { $group: { _id: null, total: { $sum: "$quantity" } } },
+    ]);
+    const invTotal = invAgg[0]?.total || 0;
+    if (invTotal > 0) {
+      return res.json({
+        success: true,
+        available: invTotal,
+        source: "legacyInv",
+      });
+    }
+    // 4) Legacy medicine.quantity (very old data)
+    const med = await Medicine.findById(medicineId).lean();
+    const legacyQty = typeof med?.quantity === "number" ? med.quantity : 0;
+    if (legacyQty > 0) {
+      return res.json({
+        success: true,
+        available: legacyQty,
+        source: "legacyMed",
+      });
+    }
+    return res.json({ success: true, available: 0, source: "none" });
+  } catch (e) {
+    next(e);
+  }
+};
+// Admin maintenance: remove all medicines from a branch (or all branches)
+export const clearBranchMedicines = async (req, res, next) => {
+  try {
+    const { branchId } = req.params;
+    if (branchId === "all") {
+      const branches = await Branch.find().select("_id").lean();
+      const ids = branches.map((b) => b._id);
+      const result = await StockBalance.deleteMany({
+        locationId: { $in: ids },
+      });
+      return res.json({
+        success: true,
+        scope: "all",
+        deleted: result.deletedCount || 0,
+      });
+    }
+    if (!mongoose.Types.ObjectId.isValid(branchId)) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid branchId" });
+    }
+    const result = await StockBalance.deleteMany({ locationId: branchId });
+    return res.json({
+      success: true,
+      scope: "single",
+      branchId,
+      deleted: result.deletedCount || 0,
+    });
+  } catch (e) {
+    next(e);
   }
 };

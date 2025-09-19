@@ -10,6 +10,8 @@ const empLinks = [
   { to: "/employee/branch-medicines", label: "Branch Medicines" },
   { to: "/employee/requests", label: "Requests" },
   { to: "/employee/fulfillment", label: "Fulfillment" },
+  { to: "/employee/sales", label: "Sales" },
+  { to: "/employee/sales/history", label: "Sales History" },
   { to: "/employee/chat", label: "Chat" },
 ];
 
@@ -55,6 +57,9 @@ const EmployeeLayout = () => {
     if (p.startsWith("/employee/requests")) return "Requests";
     if (p.startsWith("/employee/branch-medicines")) return "Branch Medicines";
     if (p.startsWith("/employee/fulfillment")) return "Fulfillment";
+    if (p === "/employee/sales" || p === "/employee/sales/") return "Sales";
+    if (p.startsWith("/employee/sales/history")) return "Sales History";
+    if (p.startsWith("/employee/sales")) return "Sales";
     if (p.startsWith("/employee/chat")) return "Chat";
     const seg = p.split("/").filter(Boolean).pop();
     if (!seg) return "Employee";
@@ -99,7 +104,7 @@ const EmployeeLayout = () => {
         </nav>
       </aside>
       {/* Top navbar */}
-      <div className="fixed top-0 left-0 right-0 z-30 bg-[var(--bg-start)]/90 backdrop-blur-sm border-b border-border px-4 py-3 flex items-center justify-between">
+      <div className="fixed top-0 left-0 right-0 z-30 bg-[var(--bg-start)]/90 backdrop-blur-sm border-b border-border px-4 py-3 flex items-center justify-between text-foreground">
         <div className="font-semibold text-foreground truncate">
           {pageTitle}
         </div>
@@ -129,7 +134,6 @@ const EmployeeLayout = () => {
           </button>
           <button
             onClick={() => {
-              localStorage.removeItem("token");
               localStorage.removeItem("token");
               localStorage.removeItem("role");
               localStorage.removeItem("user");

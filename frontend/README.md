@@ -62,6 +62,28 @@ Place `build/icon.ico` before running the build (multi-size 16..256 embedded). I
 
 Only variables prefixed with `VITE_` are embedded at build time (e.g. `VITE_API_BASE`). Do **not** embed secrets.
 
+### Using Local Backend During Development
+
+To point the frontend to your local backend (e.g., running on `http://localhost:3000`):
+
+1. Create or edit `frontend/.env.development` with:
+
+```env
+VITE_API_BASE=http://localhost:3000
+```
+
+2. Start servers in two terminals:
+
+```powershell
+cd backend; npm start
+```
+
+```powershell
+cd frontend; npm run dev
+```
+
+The app will call APIs at `http://localhost:3000/backend/...`.
+
 ### Security Notes
 
 - Do **not** commit `.env` files containing secrets (Mongo credentials, JWT secret). These are ignored via `.gitignore`.

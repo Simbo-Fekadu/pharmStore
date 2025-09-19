@@ -233,7 +233,17 @@ export const createMedicine = async (req, res) => {
       if (req.body.storeId) central = await Store.findById(req.body.storeId);
       if (!central) central = await Store.findOne();
       if (central) {
-        const qty = Number(body.quantity);
+        // Convert to base units if quantity was provided in packs
+        let qty = Number(body.quantity);
+        try {
+          const isPack =
+            req.body.initialQuantityUnit === "pack" &&
+            (body.packSize || req.body.packSize) > 1;
+          const pz = Number(body.packSize || req.body.packSize) || 0;
+          if (isPack && pz > 1) qty = qty * pz;
+        } catch {
+          /* ignore */
+        }
         const ledger = await StockLedger.create({
           medicineId: medicine._id,
           locationId: central._id,
