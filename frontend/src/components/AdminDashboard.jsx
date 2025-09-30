@@ -25,6 +25,14 @@ const AdminDashboard = () => {
       ? localStorage.getItem("super_admin_mode") || "pharmacies"
       : "overview"
   );
+  // Always default super admin landing to "pharmacies" (override any stale stored value like "branches")
+  useEffect(() => {
+    if (isSuper && superMode !== "pharmacies") {
+      setSuperMode("pharmacies");
+      localStorage.setItem("super_admin_mode", "pharmacies");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuper]);
   useEffect(() => {
     if (!isSuper) return;
     const handler = () => {
