@@ -30,6 +30,7 @@ import EmployeeSalesHistory from "./components/EmployeeSalesHistory";
 import Chat from "./components/Chat";
 import ToastProvider from "./components/ToastProvider";
 import ConfirmProvider from "./components/ConfirmProvider";
+import SuperAdminPharmacyDetail from "./components/SuperAdminPharmacyDetail";
 
 function App() {
   const fileProtocol =
@@ -70,6 +71,7 @@ function App() {
               <Route path="users" element={<AdminUsers />} />
               <Route path="suppliers" element={<AdminSuppliers />} />
               <Route path="branches" element={<AdminBranches />} />
+              <Route path="pharmacies/:id" element={<SuperAdminPharmacyDetail />} />
             </Route>
             <Route path="/employee" element={<EmployeeLayout />}>
               <Route index element={<EmployeeDashboard />} />
