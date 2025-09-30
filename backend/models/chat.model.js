@@ -8,6 +8,7 @@ const chatMessageSchema = new mongoose.Schema(
     senderId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     senderHandle: { type: String, required: true }, // username.branchName or username
     text: { type: String, required: true },
+    pharmacy: { type: mongoose.Schema.Types.ObjectId, ref: "Pharmacy" },
   },
   { timestamps: true }
 );
