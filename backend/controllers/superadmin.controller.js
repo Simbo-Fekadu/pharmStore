@@ -609,3 +609,75 @@ export const deletePharmacy = async (req, res, next) => {
     next(errorHandler(500, e.message));
   }
 };
+
+// ---- Pharmacy scoped data drilling endpoints (super admin) ----
+export const pharmacyUsers = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const pharmacy = await Pharmacy.findById(id).lean();
+    if (!pharmacy) return next(errorHandler(404, "Pharmacy not found"));
+    const users = await User.find({ pharmacy: id, role: { $ne: "super_admin" } })
+      .select("username email role branch createdAt")
+      .populate("branch", "name")
+      .lean();
+    res.json({ success: true, pharmacy: { id, name: pharmacy.name }, users });
+  } catch (e) {
+    next(errorHandler(500, e.message));
+  }
+};
+
+export const pharmacyBranches = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const pharmacy = await Pharmacy.findById(id).lean();
+    if (!pharmacy) return next(errorHandler(404, "Pharmacy not found"));
+    const branches = await Branch.find({ pharmacy: id })
+      .select("name address createdAt updatedAt")
+      .lean();
+    res.json({ success: true, pharmacy: { id, name: pharmacy.name }, branches });
+  } catch (e) {
+    next(errorHandler(500, e.message));
+  }
+};
+
+export const pharmacyMedicines = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const pharmacy = await Pharmacy.findById(id).lean();
+    if (!pharmacy) return next(errorHandler(404, "Pharmacy not found"));
+    const includeDeleted = req.query.includeDeleted === "true";
+    const filter = { pharmacy: id };
+    if (!includeDeleted) filter.isDeleted = false;
+    const medicines = await Medicine.find(filter)
+      .select(
+        "medicineName category batchNumber expiryDate purchasePrice sellingPrice quantity isDeleted createdAt"
+      )
+      .sort({ createdAt: -1 })
+      .limit(500)
+      .lean();
+    res.json({ success: true, pharmacy: { id, name: pharmacy.name }, medicines });
+  } catch (e) {
+    next(errorHandler(500, e.message));
+  }
+};
+
+export const pharmacyRequests = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const pharmacy = await Pharmacy.findById(id).lean();
+    if (!pharmacy) return next(errorHandler(404, "Pharmacy not found"));
+    const status = req.query.status; // optional filter
+    const filter = { pharmacy: id };
+    if (status) filter.status = status;
+    const requests = await Request.find(filter)
+      .sort({ createdAt: -1 })
+      .limit(300)
+      .populate("medicine", "medicineName")
+      .populate("branch", "name")
+      .select("quantity status createdAt updatedAt medicine branch")
+      .lean();
+    res.json({ success: true, pharmacy: { id, name: pharmacy.name }, requests });
+  } catch (e) {
+    next(errorHandler(500, e.message));
+  }
+};

@@ -16,6 +16,10 @@ import {
   updatePharmacy,
   pharmacySummary,
   deletePharmacy,
+  pharmacyUsers,
+  pharmacyBranches,
+  pharmacyMedicines,
+  pharmacyRequests,
 } from "../controllers/superadmin.controller.js";
 
 const router = express.Router();
@@ -36,5 +40,9 @@ router.post("/pharmacies", createPharmacy);
 router.get("/pharmacies/:id", pharmacySummary);
 router.patch("/pharmacies/:id", updatePharmacy);
 router.delete("/pharmacies/:id", deletePharmacy);
+router.get("/pharmacies/:id/users", pharmacyUsers);
+router.get("/pharmacies/:id/branches", pharmacyBranches);
+router.get("/pharmacies/:id/medicines", pharmacyMedicines);
+router.get("/pharmacies/:id/requests", pharmacyRequests);
 
 export default router;
