@@ -142,6 +142,7 @@ async function runMigrationsAndSeeding() {
 // Centralized connection logic ensuring single persistent connection
 import { connectDB } from "./db.js";
 import { ensureSuperAdmin } from "./bootstrap/superadmin.js";
+import { ensureDefaultPharmacyAndBackfill } from "./bootstrap/pharmacy.js";
 
 async function start() {
   console.log(
@@ -159,6 +160,12 @@ async function start() {
     await ensureSuperAdmin();
   } catch (e) {
     console.warn("[SuperAdmin] ensure failed:", e.message);
+  }
+  // Ensure default pharmacy and legacy backfill
+  try {
+    await ensureDefaultPharmacyAndBackfill();
+  } catch (e) {
+    console.warn("[PharmacyBootstrap] ensure failed:", e.message);
   }
   await runMigrationsAndSeeding();
   app.listen(PORT, () => {
