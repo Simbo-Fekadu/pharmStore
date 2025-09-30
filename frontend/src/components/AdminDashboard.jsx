@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import SuperAdminDashboard from "./SuperAdminDashboard.jsx";
+import SuperAdminBranches from "./SuperAdminBranches.jsx";
 import { useNavigate } from "react-router-dom";
 import {
   Package,
@@ -15,6 +16,24 @@ const API = getApiBase() + "/backend";
 
 // Dashboard with summary metrics
 const AdminDashboard = () => {
+  const isSuper =
+    typeof window !== "undefined" && localStorage.getItem("role") === "super_admin";
+  const [superMode, setSuperMode] = useState(() =>
+    isSuper ? localStorage.getItem("super_admin_mode") || "overview" : "overview"
+  );
+  useEffect(() => {
+    if (!isSuper) return;
+    const handler = () => {
+      setSuperMode(localStorage.getItem("super_admin_mode") || "overview");
+    };
+    window.addEventListener("storage", handler);
+    return () => window.removeEventListener("storage", handler);
+  }, [isSuper]);
+  const switchSuperMode = (m) => {
+    if (!isSuper) return;
+    localStorage.setItem("super_admin_mode", m);
+    setSuperMode(m);
+  };
   const [stats, setStats] = useState({
     total: 0,
     nearExpiry: 0,
@@ -142,8 +161,41 @@ const AdminDashboard = () => {
   const pct = (num, den) => (den > 0 ? Math.round((num / den) * 100) : 0);
 
   // If super admin -> render dedicated dashboard
-  if (typeof window !== "undefined" && localStorage.getItem("role") === "super_admin") {
-    return <SuperAdminDashboard />;
+  if (isSuper) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <h1 className="text-3xl font-bold tracking-tight">Super Admin</h1>
+          <div className="flex items-center gap-2 text-sm">
+            <button
+              onClick={() => switchSuperMode("overview")}
+              className={`px-3 py-1.5 rounded border transition ${
+                superMode === "overview"
+                  ? "bg-[var(--brand)] text-white border-[var(--brand)]"
+                  : "bg-white/10 border-white/10 hover:bg-white/20"
+              }`}
+            >
+              System Overview
+            </button>
+            <button
+              onClick={() => switchSuperMode("branches")}
+              className={`px-3 py-1.5 rounded border transition ${
+                superMode === "branches"
+                  ? "bg-[var(--brand)] text-white border-[var(--brand)]"
+                  : "bg-white/10 border-white/10 hover:bg-white/20"
+              }`}
+            >
+              Branches Grid
+            </button>
+          </div>
+        </div>
+        {superMode === "branches" ? (
+          <SuperAdminBranches />
+        ) : (
+          <SuperAdminDashboard />
+        )}
+      </div>
+    );
   }
 
   return (

@@ -9,6 +9,8 @@ import {
   deleteUserAny,
   statsSummary,
   systemOverview,
+  branchesOverview,
+  branchDetailOverview,
 } from "../controllers/superadmin.controller.js";
 
 const router = express.Router();
@@ -21,5 +23,7 @@ router.post("/users/:id/elevate-admin", elevateToAdmin);
 router.delete("/users/:id", deleteUserAny);
 router.get("/stats", statsSummary);
 router.get("/overview", systemOverview);
+router.get("/branches", branchesOverview);
+router.get("/branches/:id", branchDetailOverview);
 
 export default router;

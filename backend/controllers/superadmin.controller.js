@@ -6,6 +6,7 @@ import Supplier from "../models/supplier.model.js";
 import Branch from "../models/branch.model.js";
 import Request from "../models/request.model.js";
 import { StockBalance, StockLedger } from "../models/inventory.model.js";
+import Inventory from "../models/inventory.model.js";
 
 // Audit log is a stub for now; later you can persist to a collection
 function logAudit(action, actorId, meta = {}) {
@@ -209,12 +210,12 @@ export const systemOverview = async (_req, res, next) => {
         pending: pendingRequestsCount,
         recent: recentRequestsRaw.map((r) => ({
           id: r._id,
-            medicine: r.medicine?.medicineName,
-            branch: r.branch?.name,
-            qty: r.quantity,
-            status: r.status,
-            createdAt: r.createdAt,
-          })),
+          medicine: r.medicine?.medicineName,
+          branch: r.branch?.name,
+          qty: r.quantity,
+          status: r.status,
+          createdAt: r.createdAt,
+        })),
       },
       recentTransactions: recentLedgerRaw.map((l) => ({
         id: l._id,
@@ -233,6 +234,170 @@ export const systemOverview = async (_req, res, next) => {
     };
 
     res.json({ success: true, overview });
+  } catch (e) {
+    next(errorHandler(500, e.message));
+  }
+};
+
+// List summary metrics per branch for super admin grid view
+export const branchesOverview = async (_req, res, next) => {
+  try {
+    const branches = await Branch.find({}).lean();
+    if (branches.length === 0) {
+      return res.json({ success: true, branches: [] });
+    }
+    const branchIds = branches.map((b) => b._id);
+    const now = new Date();
+    const nearCut = new Date(Date.now() + 90 * 86400000);
+
+    // Aggregate inventory by branch
+    const invAgg = await Inventory.aggregate([
+      { $match: { locationType: "Branch", locationId: { $in: branchIds } } },
+      {
+        $group: {
+          _id: "$locationId",
+          totalUnits: { $sum: { $ifNull: ["$quantity", 0] } },
+          itemCount: { $sum: 1 },
+          expired: {
+            $sum: {
+              $cond: [
+                { $lt: ["$expiryDate", now] },
+                1,
+                0
+              ],
+            },
+          },
+          nearExpiry: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $gte: ["$expiryDate", now] },
+                    { $lte: ["$expiryDate", nearCut] },
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
+          },
+          latestInventoryUpdate: { $max: "$updatedAt" },
+        },
+      },
+    ]);
+    const invMap = invAgg.reduce((acc, r) => {
+      acc[r._id.toString()] = r; return acc; }, {});
+
+    // Pending requests per branch
+    const reqAgg = await Request.aggregate([
+      { $match: { branch: { $in: branchIds }, status: "Pending" } },
+      { $group: { _id: "$branch", pending: { $sum: 1 } } },
+    ]);
+    const reqMap = reqAgg.reduce((acc, r) => { acc[r._id.toString()] = r.pending; return acc; }, {});
+
+    const branchesOut = branches.map((b) => {
+      const inv = invMap[b._id.toString()] || {}; 
+      return {
+        id: b._id,
+        name: b.name,
+        address: b.address,
+        totalUnits: inv.totalUnits || 0,
+        itemCount: inv.itemCount || 0,
+        expired: inv.expired || 0,
+        nearExpiry: inv.nearExpiry || 0,
+        pendingRequests: reqMap[b._id.toString()] || 0,
+        latestInventoryUpdate: inv.latestInventoryUpdate || null,
+      };
+    });
+    res.json({ success: true, branches: branchesOut });
+  } catch (e) {
+    next(errorHandler(500, e.message));
+  }
+};
+
+// Detail metrics for a single branch
+export const branchDetailOverview = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const branch = await Branch.findById(id).lean();
+    if (!branch) return next(errorHandler(404, "Branch not found"));
+    const now = new Date();
+    const nearCut = new Date(Date.now() + 90 * 86400000);
+    const invDocs = await Inventory.find({ locationType: "Branch", locationId: id })
+      .populate("medicine", "medicineName category expiryDate")
+      .lean();
+
+    let totalUnits = 0;
+    let expired = 0;
+    let nearExpiry = 0;
+    const items = [];
+    for (const d of invDocs) {
+      const qty = d.quantity || 0;
+      totalUnits += qty;
+      const exp = d.expiryDate || d.medicine?.expiryDate;
+      if (exp) {
+        const t = new Date(exp).getTime();
+        if (t < now.getTime()) expired++;
+        else if (t <= nearCut.getTime()) nearExpiry++;
+      }
+      items.push({
+        id: d._id,
+        medicine: d.medicine?.medicineName || "Unknown",
+        category: d.medicine?.category,
+        quantity: qty,
+        expiryDate: exp,
+      });
+    }
+    // Sort items by quantity desc and take top 15 for summary
+    const topItems = items
+      .slice()
+      .sort((a, b) => b.quantity - a.quantity)
+      .slice(0, 15);
+
+    const pendingRequests = await Request.countDocuments({ branch: id, status: "Pending" });
+    const recentRequests = await Request.find({ branch: id })
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .populate("medicine", "medicineName")
+      .lean();
+
+    const recentTransactions = await StockLedger.find({ locationId: id })
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .select("medicineId quantity transactionType createdAt status")
+      .populate("medicineId", "medicineName")
+      .lean();
+
+    const detail = {
+      branch: { id: branch._id, name: branch.name, address: branch.address },
+      inventory: {
+        totalUnits,
+        itemCount: invDocs.length,
+        expired,
+        nearExpiry,
+        topItems,
+      },
+      requests: {
+        pending: pendingRequests,
+        recent: recentRequests.map(r => ({
+          id: r._id,
+          medicine: r.medicine?.medicineName,
+          qty: r.quantity,
+          status: r.status,
+          createdAt: r.createdAt,
+        })),
+      },
+      recentTransactions: recentTransactions.map(t => ({
+        id: t._id,
+        medicine: t.medicineId?.medicineName,
+        qty: t.quantity,
+        type: t.transactionType,
+        status: t.status,
+        createdAt: t.createdAt,
+      })),
+      generatedAt: new Date(),
+    };
+    res.json({ success: true, detail });
   } catch (e) {
     next(errorHandler(500, e.message));
   }
