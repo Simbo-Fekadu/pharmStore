@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useRef, useCallback } from "react";
+import { Link } from "react-router-dom";
 import {
   Trash2,
   Plus,
@@ -8,6 +9,8 @@ import {
   ChevronRight,
   Search,
   Filter,
+  FileSpreadsheet,
+  FileText,
 } from "lucide-react";
 
 import { getApiBase } from "../api/base";
@@ -20,7 +23,7 @@ const API = getApiBase() + "/backend";
 const AdminMedicines = () => {
   const toast = useToast();
   const confirm = useConfirm();
-  // Helper: sort medicines by most recent first
+  // Helper utilities
   const sortByRecent = (arr) =>
     (arr || []).slice().sort((a, b) => {
       const aT = new Date(a?.updatedAt || a?.createdAt || 0).getTime();
@@ -32,11 +35,9 @@ const AdminMedicines = () => {
     const pp = Number(m.purchasePrice);
     const sp = Number(m.sellingPrice);
     if (!isFinite(pp)) return sp;
-    // If missing or clearly a multiplier (<= 3), compute from purchase price
     if (!isFinite(sp) || sp <= 3) {
-      // If a valid multiplier present (>= 1), use it; else fallback to defaults by category
       const factor =
-        isFinite(sp) && sp >= 1 ? sp : m.category === "Cosmetics" ? 1.35 : 1.25;
+        isFinite(sp) && sp >= 1 ? sp : m.category === "COSMETICS" ? 1.35 : 1.25;
       return Math.round(pp * factor * 100) / 100;
     }
     return sp;
@@ -63,6 +64,267 @@ const AdminMedicines = () => {
   const [locations, setLocations] = useState({ stores: [], branches: [] });
   const [submitting, setSubmitting] = useState(false);
   const [role, setRole] = useState(null);
+  const [exporting, setExporting] = useState(false);
+  // Excel export (with route diagnostic on 404)
+  const exportExcel = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const res = await authFetch(`${API}/medicine/export/xlsx`);
+      if (!res.ok) {
+        if (res.status === 404) {
+          try {
+            const routeRes = await fetch(`${getApiBase()}/backend/_routes`);
+            if (routeRes.ok) {
+              const json = await routeRes.json();
+              const found = (json.routes || []).some(
+                (r) =>
+                  r.path === "/backend/medicine/export/xlsx" &&
+                  (r.methods || []).includes("GET")
+              );
+              if (!found) {
+                toast.error(
+                  "Export route not active. Restart backend to load latest code."
+                );
+              } else {
+                toast.error(
+                  "Export route exists but returned 404 (auth/path issue)."
+                );
+              }
+            } else {
+              toast.error("Export 404. Could not inspect backend routes.");
+            }
+          } catch {
+            toast.error("Export 404 and route inspection failed.");
+          }
+        } else {
+          toast.error(`Export failed (${res.status})`);
+        }
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `medicines_${Date.now()}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast.success("Excel exported");
+    } catch (e) {
+      toast.error(e.message || "Export error");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // Improved PDF export with robust wrapping and grouping
+  const exportPdf = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const { jsPDF } = await import("jspdf");
+      const doc = new jsPDF({
+        orientation: "landscape",
+        unit: "pt",
+        format: "a4",
+      });
+      const margin = 28;
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const headers = [
+        "Name",
+        "Category",
+        "Batch",
+        "Expiry",
+        "Purchase",
+        "Selling",
+        "Remaining",
+      ];
+      const widths = [200, 90, 90, 70, 70, 70, 70];
+      const startX = margin;
+      let y = margin;
+      doc.setFontSize(15);
+      doc.setFont(undefined, "bold");
+      doc.text("Medicines Report", startX, y);
+      doc.setFontSize(8);
+      doc.setFont(undefined, "normal");
+      y += 10;
+      doc.text(`Generated: ${new Date().toLocaleString()}`, startX, y);
+      y += 12;
+      const lineHeight = 11;
+      const cellPaddingY = 4;
+      const headerHeight = 20;
+      const drawTableHeader = () => {
+        // Draw header background blocks first
+        let x = startX;
+        doc.setDrawColor(60);
+        doc.setFillColor(30, 30, 30);
+        widths.forEach((w) => {
+          doc.rect(x, y, w, headerHeight, "FD");
+          x += w;
+        });
+        // Now write text centered in each cell
+        doc.setFontSize(9);
+        doc.setFont(undefined, "bold");
+        doc.setTextColor(255);
+        x = startX;
+        headers.forEach((txt, idx) => {
+          const w = widths[idx];
+          // Center horizontally & vertically
+          const textX = x + w / 2;
+          const textY = y + headerHeight / 2 + 3; // slight downward tweak
+          doc.text(String(txt || ""), textX, textY, {
+            align: "center",
+            baseline: "middle",
+          });
+          x += w;
+        });
+        // Reset for body
+        doc.setTextColor(0);
+        doc.setFont(undefined, "normal");
+        y += headerHeight;
+      };
+      const ensureSpace = (needed) => {
+        if (y + needed + margin > pageHeight) {
+          doc.addPage();
+          y = margin;
+          doc.setFontSize(11);
+          doc.setFont(undefined, "bold");
+          doc.text("Medicines Report (cont.)", startX, y);
+          doc.setFont(undefined, "normal");
+          y += 18;
+          drawTableHeader();
+        }
+      };
+      const wrapCell = (text, maxWidth) => {
+        if (text == null || text === "") return [""];
+        const raw = String(text).replace(/\s+/g, " ").trim();
+        if (!raw) return [""];
+        const words = raw.split(" ");
+        const lines = [];
+        let current = "";
+        words.forEach((w) => {
+          const tentative = current ? current + " " + w : w;
+          if (doc.getTextWidth(tentative) > maxWidth - 8) {
+            if (current) lines.push(current);
+            if (!current && doc.getTextWidth(w) > maxWidth - 8) {
+              let slice = "";
+              for (const ch of w) {
+                const test = slice + ch;
+                if (doc.getTextWidth(test) > maxWidth - 8) {
+                  if (slice) lines.push(slice);
+                  slice = ch;
+                } else slice += ch;
+              }
+              current = slice;
+            } else {
+              current = w;
+            }
+          } else {
+            current = tentative;
+          }
+        });
+        if (current) lines.push(current);
+        return lines.length ? lines : [""];
+      };
+      // Grouping
+      const today = new Date();
+      const nearCutoff = new Date(today.getTime() + 30 * 86400000);
+      const active = [],
+        near = [],
+        expired = [];
+      list.forEach((m) => {
+        if (!m.expiryDate) return active.push(m);
+        const exp = new Date(m.expiryDate);
+        if (exp < today) expired.push(m);
+        else if (exp <= nearCutoff) near.push(m);
+        else active.push(m);
+      });
+      const groups = [
+        {
+          title: `Active (${active.length})`,
+          data: active,
+          color: [34, 139, 34],
+        },
+        {
+          title: `Near Expiry ≤30d (${near.length})`,
+          data: near,
+          color: [218, 165, 32],
+        },
+        {
+          title: `Expired (${expired.length})`,
+          data: expired,
+          color: [178, 34, 34],
+        },
+      ].filter((g) => g.data.length);
+      const drawGroupHeader = (g) => {
+        const gh = 20;
+        ensureSpace(gh + headerHeight);
+        doc.setFillColor(...g.color);
+        doc.setDrawColor(...g.color);
+        doc.setTextColor(255);
+        doc.rect(
+          startX,
+          y,
+          widths.reduce((a, b) => a + b, 0),
+          gh,
+          "FD"
+        );
+        doc.setFontSize(11);
+        doc.setFont(undefined, "bold");
+        doc.text(g.title, startX + 8, y + 13);
+        doc.setFont(undefined, "normal");
+        doc.setTextColor(0);
+        y += gh;
+        drawTableHeader();
+      };
+      groups.forEach((group) => {
+        drawGroupHeader(group);
+        group.data.forEach((m) => {
+          const expStr = m.expiryDate
+            ? new Date(m.expiryDate).toISOString().slice(0, 10)
+            : "";
+          const purchase = m.purchasePrice ?? "";
+          const selling = m.sellingPrice ?? sellingValue(m) ?? "";
+          const remaining = m.remainingQuantity ?? m.initialQuantity ?? "";
+          const rowValues = [
+            m.medicineName || "",
+            m.category || "",
+            m.batchNumber || "",
+            expStr,
+            purchase,
+            selling,
+            remaining,
+          ];
+          const wrapped = rowValues.map((v, i) => wrapCell(v, widths[i]));
+          const linesMax = Math.max(...wrapped.map((w) => w.length));
+          const rowHeight = Math.max(
+            headerHeight - 2,
+            linesMax * lineHeight + cellPaddingY * 2
+          );
+          ensureSpace(rowHeight);
+          let x = startX;
+          wrapped.forEach((lines, i) => {
+            doc.setDrawColor(180);
+            doc.rect(x, y, widths[i], rowHeight);
+            lines.forEach((ln, li) => {
+              const textY = y + cellPaddingY + 8 + li * lineHeight;
+              doc.text(ln, x + 4, textY);
+            });
+            x += widths[i];
+          });
+          y += rowHeight;
+        });
+      });
+      doc.save(`medicines_${Date.now()}.pdf`);
+      toast.success("PDF exported");
+    } catch (e) {
+      toast.error(e.message || "PDF export error");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -246,7 +508,7 @@ const AdminMedicines = () => {
         <div className="p-6 max-w-6xl mx-auto space-y-8">
           <div className="bg-card border border-border rounded-xl shadow-sm">
             <div className="p-6 border-b border-border">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-4">
                 <div>
                   <h2 className="text-lg font-semibold text-foreground">
                     All Medicines
@@ -256,22 +518,22 @@ const AdminMedicines = () => {
                     {filteredList.length !== 1 ? "s" : ""} found
                   </p>
                 </div>
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <div className="relative">
+                <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3">
+                  <div className="relative w-full sm:w-64">
                     <Search className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
                     <input
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
                       placeholder="Search medicines..."
-                      className="pl-9 pr-3 py-2 bg-background border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent w-full sm:w-64"
+                      className="pl-9 pr-3 py-2 bg-background border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent w-full"
                     />
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
                     <Filter className="w-4 h-4 text-muted-foreground" />
                     <select
                       value={categoryFilter}
                       onChange={(e) => setCategoryFilter(e.target.value)}
-                      className="px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                      className="px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent w-full sm:w-auto"
                     >
                       <option value="all">All Categories</option>
                       {uniqueCategories.map((c) => (
@@ -281,14 +543,14 @@ const AdminMedicines = () => {
                       ))}
                     </select>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
                     <span className="text-xs text-muted-foreground">
                       Expiry
                     </span>
                     <select
                       value={expiryFilter}
                       onChange={(e) => setExpiryFilter(e.target.value)}
-                      className="px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                      className="px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent w-full sm:w-auto"
                     >
                       <option value="all">All</option>
                       <option value="active">Active</option>
@@ -296,27 +558,47 @@ const AdminMedicines = () => {
                       <option value="expired">Expired</option>
                     </select>
                   </div>
-                  {(search ||
-                    categoryFilter !== "all" ||
-                    expiryFilter !== "all") && (
+                  <div className="flex flex-wrap gap-2 items-center">
+                    {(search ||
+                      categoryFilter !== "all" ||
+                      expiryFilter !== "all") && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSearch("");
+                          setCategoryFilter("all");
+                          setExpiryFilter("all");
+                        }}
+                        className="px-3 py-2 text-xs bg-muted hover:bg-muted/80 text-muted-foreground rounded-lg transition-colors"
+                      >
+                        Clear
+                      </button>
+                    )}
                     <button
                       type="button"
-                      onClick={() => {
-                        setSearch("");
-                        setCategoryFilter("all");
-                        setExpiryFilter("all");
-                      }}
-                      className="px-3 py-2 text-sm bg-muted hover:bg-muted/80 text-muted-foreground rounded-lg transition-colors"
+                      onClick={exportExcel}
+                      disabled={exporting}
+                      className="inline-flex items-center gap-1 px-3 py-2 text-xs bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground rounded-lg"
+                      title="Export Excel (Active / NearExpiry / Expired)"
                     >
-                      Clear
+                      <FileSpreadsheet className="w-4 h-4" /> Excel
                     </button>
-                  )}
-                  <a
-                    href="/admin/medicines/add"
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg font-medium transition-colors"
+                    <button
+                      type="button"
+                      onClick={exportPdf}
+                      disabled={exporting}
+                      className="inline-flex items-center gap-1 px-3 py-2 text-xs bg-secondary hover:bg-secondary/80 disabled:opacity-50 text-secondary-foreground rounded-lg"
+                      title="Export PDF"
+                    >
+                      <FileText className="w-4 h-4" /> PDF
+                    </button>
+                  </div>
+                  <Link
+                    to="/admin/medicines/add"
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg font-medium transition-colors w-full sm:w-auto justify-center"
                   >
                     <Plus className="w-4 h-4" /> Add Medicine
-                  </a>
+                  </Link>
                 </div>
               </div>
             </div>

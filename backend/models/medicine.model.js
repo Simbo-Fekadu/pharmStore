@@ -15,17 +15,21 @@ const medicineSchema = new mongoose.Schema(
     category: {
       type: String,
       enum: [
-        "Tablet",
-        "Capsule",
-        "Syrup",
-        "Injection",
-        "Cream/Oint",
-        "Cosmetics",
-        "Others",
-        "Other",
+        "ANTIBIOTICS",
+        "CNS DRUGS",
+        "VITAMINS & MINERALS",
+        "RESPIRATORY DRUGS",
+        "ENT DRUGS",
+        "GI DRUGS",
+        "ANALGESICS/ANTIHISTAMINS",
+        "HORMONES",
+        "DERMATOLOGICALS",
+        "CVS DRUGS",
+        "MISCELLANEOUS",
+        "COSMETICS",
       ],
       required: true,
-      default: "Others",
+      default: "MISCELLANEOUS",
     },
     unit: {
       type: String,
@@ -92,7 +96,7 @@ medicineSchema.pre("save", function (next) {
   if (!this.baseUnit && this.unit) this.baseUnit = this.unit;
   // Default legacy sellingPrice if missing
   if (this.sellingPrice == null) {
-    const factor = this.category === "Cosmetics" ? 1.35 : 1.25;
+    const factor = this.category === "COSMETICS" ? 1.35 : 1.25;
     this.sellingPrice = this.purchasePrice * factor;
   }
   // Establish per-unit prices if possible

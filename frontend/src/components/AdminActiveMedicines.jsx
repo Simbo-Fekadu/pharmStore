@@ -78,133 +78,139 @@ const AdminActiveMedicines = () => {
         ) : filtered.length === 0 ? (
           <div className="text-sm opacity-80">No medicines</div>
         ) : (
-          <table className="w-full text-xs md:text-sm">
-            <thead>
-              <tr className="text-left text-white/70 bg-white/5">
-                <th className="py-2 pr-3"> </th>
-                <th className="py-2 pr-3">Name</th>
-                <th className="py-2 pr-3">Brand</th>
-                <th className="py-2 pr-3">Category</th>
-                <th className="py-2 pr-3">Batch</th>
-                <th className="py-2 pr-3">Expiry</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((m) => {
-                const isOpen = openRow === m._id;
-                return (
-                  <>
-                    <tr
-                      key={m._id}
-                      className="border-t border-white/5 hover:bg-white/5"
-                    >
-                      <td className="py-1.5 pr-3 align-top">
-                        <button
-                          onClick={() => setOpenRow(isOpen ? null : m._id)}
-                          className="w-6 h-6 inline-flex items-center justify-center rounded bg-white/10 hover:bg-white/20 border border-white/10"
-                          title={isOpen ? "Collapse" : "Expand"}
-                        >
-                          {isOpen ? (
-                            <ChevronDown className="w-4 h-4 text-white/70" />
-                          ) : (
-                            <ChevronRight className="w-4 h-4 text-white/70" />
-                          )}
-                        </button>
-                      </td>
-                      <td className="py-1.5 pr-3 font-medium text-white/90">
-                        {m.medicineName}
-                      </td>
-                      <td className="py-1.5 pr-3 text-white/70">
-                        {m.brand || "-"}
-                      </td>
-                      <td className="py-1.5 pr-3 text-white/70">
-                        {m.category}
-                      </td>
-                      <td className="py-1.5 pr-3 text-white/70">
-                        {m.batchNumber}
-                      </td>
-                      <td className="py-1.5 pr-3 text-white/70">
-                        {new Date(m.expiryDate).toLocaleDateString()}
-                      </td>
-                    </tr>
-                    {isOpen && (
-                      <tr className="bg-white/5">
-                        <td colSpan={6} className="px-6 py-4">
-                          <div className="grid md:grid-cols-3 gap-6 text-xs md:text-sm">
-                            <div className="space-y-2">
-                              <h4 className="font-semibold text-white/80 text-sm">
-                                Details
-                              </h4>
-                              <div>
-                                <span className="text-white/50">
-                                  Description:{" "}
-                                </span>
-                                {m.description || "—"}
-                              </div>
-                              <div>
-                                <span className="text-white/50">
-                                  Purchase:{" "}
-                                </span>
-                                {m.purchasePrice}
-                              </div>
-                              <div>
-                                <span className="text-white/50">Selling: </span>
-                                {m.sellingPrice}
-                              </div>
-                              <div>
-                                <span className="text-white/50">
-                                  Quantity:{" "}
-                                </span>
-                                {m.quantity ?? "-"}
-                              </div>
-                            </div>
-                            <div className="space-y-2">
-                              <h4 className="font-semibold text-white/80 text-sm">
-                                Supplier
-                              </h4>
-                              {m.supplier ? (
-                                <>
-                                  <div>
-                                    <span className="text-white/50">
-                                      Name:{" "}
-                                    </span>
-                                    {m.supplier.supplierName || "-"}
-                                  </div>
-                                  <div>
-                                    <span className="text-white/50">
-                                      Phone:{" "}
-                                    </span>
-                                    {m.supplier.phoneNumber || "-"}
-                                  </div>
-                                  <div>
-                                    <span className="text-white/50">
-                                      Address:{" "}
-                                    </span>
-                                    {m.supplier.address || "-"}
-                                  </div>
-                                </>
-                              ) : (
-                                <div className="text-white/60">None</div>
-                              )}
-                            </div>
-                            <div className="space-y-2">
-                              <h4 className="font-semibold text-white/80 text-sm">
-                                Meta
-                              </h4>
-                              <div>
-                                <span className="text-white/50">Created: </span>
-                                {new Date(m.createdAt).toLocaleDateString()}
-                              </div>
-                            </div>
-                          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs md:text-sm">
+              <thead>
+                <tr className="text-left text-white/70 bg-white/5">
+                  <th className="py-2 pr-3"> </th>
+                  <th className="py-2 pr-3">Name</th>
+                  <th className="py-2 pr-3">Brand</th>
+                  <th className="py-2 pr-3">Category</th>
+                  <th className="py-2 pr-3">Batch</th>
+                  <th className="py-2 pr-3">Expiry</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((m) => {
+                  const isOpen = openRow === m._id;
+                  return (
+                    <>
+                      <tr
+                        key={m._id}
+                        className="border-t border-white/5 hover:bg-white/5"
+                      >
+                        <td className="py-1.5 pr-3 align-top">
+                          <button
+                            onClick={() => setOpenRow(isOpen ? null : m._id)}
+                            className="w-6 h-6 inline-flex items-center justify-center rounded bg-white/10 hover:bg-white/20 border border-white/10"
+                            title={isOpen ? "Collapse" : "Expand"}
+                          >
+                            {isOpen ? (
+                              <ChevronDown className="w-4 h-4 text-white/70" />
+                            ) : (
+                              <ChevronRight className="w-4 h-4 text-white/70" />
+                            )}
+                          </button>
+                        </td>
+                        <td className="py-1.5 pr-3 font-medium text-white/90">
+                          {m.medicineName}
+                        </td>
+                        <td className="py-1.5 pr-3 text-white/70">
+                          {m.brand || "-"}
+                        </td>
+                        <td className="py-1.5 pr-3 text-white/70">
+                          {m.category}
+                        </td>
+                        <td className="py-1.5 pr-3 text-white/70">
+                          {m.batchNumber}
+                        </td>
+                        <td className="py-1.5 pr-3 text-white/70">
+                          {new Date(m.expiryDate).toLocaleDateString()}
                         </td>
                       </tr>
-                    )}
-                  </>
-                );
-              })}
-            </tbody>
-          </table>
+                      {isOpen && (
+                        <tr className="bg-white/5">
+                          <td colSpan={6} className="px-6 py-4">
+                            <div className="grid md:grid-cols-3 gap-6 text-xs md:text-sm">
+                              <div className="space-y-2">
+                                <h4 className="font-semibold text-white/80 text-sm">
+                                  Details
+                                </h4>
+                                <div>
+                                  <span className="text-white/50">
+                                    Description:{" "}
+                                  </span>
+                                  {m.description || "—"}
+                                </div>
+                                <div>
+                                  <span className="text-white/50">
+                                    Purchase:{" "}
+                                  </span>
+                                  {m.purchasePrice}
+                                </div>
+                                <div>
+                                  <span className="text-white/50">
+                                    Selling:{" "}
+                                  </span>
+                                  {m.sellingPrice}
+                                </div>
+                                <div>
+                                  <span className="text-white/50">
+                                    Quantity:{" "}
+                                  </span>
+                                  {m.quantity ?? "-"}
+                                </div>
+                              </div>
+                              <div className="space-y-2">
+                                <h4 className="font-semibold text-white/80 text-sm">
+                                  Supplier
+                                </h4>
+                                {m.supplier ? (
+                                  <>
+                                    <div>
+                                      <span className="text-white/50">
+                                        Name:{" "}
+                                      </span>
+                                      {m.supplier.supplierName || "-"}
+                                    </div>
+                                    <div>
+                                      <span className="text-white/50">
+                                        Phone:{" "}
+                                      </span>
+                                      {m.supplier.phoneNumber || "-"}
+                                    </div>
+                                    <div>
+                                      <span className="text-white/50">
+                                        Address:{" "}
+                                      </span>
+                                      {m.supplier.address || "-"}
+                                    </div>
+                                  </>
+                                ) : (
+                                  <div className="text-white/60">None</div>
+                                )}
+                              </div>
+                              <div className="space-y-2">
+                                <h4 className="font-semibold text-white/80 text-sm">
+                                  Meta
+                                </h4>
+                                <div>
+                                  <span className="text-white/50">
+                                    Created:{" "}
+                                  </span>
+                                  {new Date(m.createdAt).toLocaleDateString()}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>

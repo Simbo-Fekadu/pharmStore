@@ -139,23 +139,23 @@ async function runMigrationsAndSeeding() {
   }
 }
 
+// Centralized connection logic ensuring single persistent connection
+import { connectDB } from "./db.js";
+
 async function start() {
-  console.log("Connecting to MongoDB ...");
+  console.log(
+    "[Startup] Initializing API server (API-only mode, no frontend rendering)"
+  );
   try {
-    await mongoose.connect(MONGO_URL, {
-      serverSelectionTimeoutMS: 10000,
-      // You can uncomment the next line to immediately error instead of buffering if disconnected:
-      // bufferCommands: false,
-    });
-    console.log("Connected to MongoDB");
+    await connectDB(MONGO_URL);
+    console.log("[Startup] MongoDB connected (persistent single connection)");
   } catch (err) {
     console.error("[FATAL] Could not connect to MongoDB:", err.message);
     return process.exit(1);
   }
-
   await runMigrationsAndSeeding();
   app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+    console.log(`API server listening on http://localhost:${PORT}`);
   });
 }
 const __dirname = path.resolve();

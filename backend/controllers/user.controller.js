@@ -30,8 +30,12 @@ export const getUser = async (req, res) => {
 export const updateUser = async (req, res, next) => {
   try {
     // Prevent role escalation by non-admin (should be enforced by middleware too)
-    if (req.body.role && req.user.role !== "admin") {
+    if (req.body.role && !["admin", "super_admin"].includes(req.user.role)) {
       return next(errorHandler(403, "Cannot change role"));
+    }
+    // Never allow setting super_admin via API
+    if (req.body.role === "super_admin") {
+      return next(errorHandler(403, "Cannot assign super_admin role"));
     }
     // If password provided, hash it
     if (req.body.password) {
@@ -87,7 +91,7 @@ export const createEmployee = async (req, res) => {
       username,
       email,
       password: hashed,
-      role: "employee",
+      role: "employee", // cannot create super_admin here
       branch: branch || undefined,
     });
     await user.save();

@@ -12,18 +12,19 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "desktop:dev": "concurrently \"npm:dev\" \"wait-on http://localhost:5173 && electron ./electron/main.js\"",
-  "desktop:build": "npm run build && electron-builder --win",
-  "desktop:build:portable": "npm run build && electron-builder --win portable",
-  "desktop:build:win:all": "npm run build && electron-builder --win --x64 --ia32",
-  "desktop:build:portable:all": "npm run build && electron-builder --win portable --x64 --ia32",
-  "desktop:build:win:x64": "npm run build && electron-builder --win nsis --x64",
-  "desktop:build:win:ia32": "npm run build && electron-builder --win nsis --ia32",
-  "desktop:build:portable:x64": "npm run build && electron-builder --win portable --x64",
-  "desktop:build:portable:ia32": "npm run build && electron-builder --win portable --ia32",
+    "desktop:build": "npm run build && electron-builder --win",
+    "desktop:build:portable": "npm run build && electron-builder --win portable",
+    "desktop:build:win:all": "npm run build && electron-builder --win --x64 --ia32",
+    "desktop:build:portable:all": "npm run build && electron-builder --win portable --x64 --ia32",
+    "desktop:build:win:x64": "npm run build && electron-builder --win nsis --x64",
+    "desktop:build:win:ia32": "npm run build && electron-builder --win nsis --ia32",
+    "desktop:build:portable:x64": "npm run build && electron-builder --win portable --x64",
+    "desktop:build:portable:ia32": "npm run build && electron-builder --win portable --ia32",
     "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.13",
+    "jspdf": "^2.5.2",
     "lucide-react": "^0.544.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
@@ -35,14 +36,14 @@
     "@types/react": "^19.1.9",
     "@types/react-dom": "^19.1.7",
     "@vitejs/plugin-react": "^5.0.2",
+    "concurrently": "^9.0.1",
+    "electron": "^38.1.0",
+    "electron-builder": "^26.0.12",
     "eslint": "^9.32.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
     "globals": "^16.3.0",
     "vite": "^7.1.5",
-    "electron": "^38.1.0",
-    "electron-builder": "^26.0.12",
-    "concurrently": "^9.0.1",
     "wait-on": "^7.2.0"
   },
   "build": {
@@ -65,11 +66,17 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64", "ia32"]
+          "arch": [
+            "x64",
+            "ia32"
+          ]
         },
         {
           "target": "portable",
-          "arch": ["x64", "ia32"]
+          "arch": [
+            "x64",
+            "ia32"
+          ]
         }
       ]
     },

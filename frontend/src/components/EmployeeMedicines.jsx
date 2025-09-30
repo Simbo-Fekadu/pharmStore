@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from "react";
 import { ChevronDown, ChevronRight, Search, Filter } from "lucide-react";
 import { getApiBase } from "../api/base";
 import { authFetch } from "../api/authFetch";
+import { ceilCurrency } from "../utils/number";
 import useToast from "../hooks/useToast";
 const API = getApiBase() + "/backend";
 
@@ -33,6 +34,20 @@ const EmployeeMedicines = () => {
   });
   // Branches removed; branch auto-detected from session
   const [submitting, setSubmitting] = useState(false);
+
+  // Price helpers: match admin logic
+  const formatBirr = (v) => ceilCurrency(v);
+  const sellingValue = (m) => {
+    const pp = Number(m.purchasePrice);
+    const sp = Number(m.sellingPrice);
+    if (!isFinite(pp)) return sp;
+    if (!isFinite(sp) || sp <= 3) {
+      const factor =
+        isFinite(sp) && sp >= 1 ? sp : m.category === "COSMETICS" ? 1.35 : 1.25;
+      return Math.round(pp * factor * 100) / 100;
+    }
+    return sp;
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -191,7 +206,7 @@ const EmployeeMedicines = () => {
       <div className="p-6 max-w-6xl mx-auto space-y-8">
         <div className="bg-card border border-border rounded-xl shadow-sm">
           <div className="p-6 border-b border-border">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-4">
               <div>
                 <h2 className="text-lg font-semibold text-foreground">
                   Medicines
@@ -201,22 +216,22 @@ const EmployeeMedicines = () => {
                   {filteredList.length !== 1 ? "s" : ""}
                 </p>
               </div>
-              <div className="flex flex-col sm:flex-row gap-3">
-                <div className="relative">
+              <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3">
+                <div className="relative w-full sm:w-64">
                   <Search className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder="Search medicines..."
-                    className="pl-9 pr-3 py-2 bg-background border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent w-full sm:w-64"
+                    className="pl-9 pr-3 py-2 bg-background border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent w-full"
                   />
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 w-full sm:w-auto">
                   <Filter className="w-4 h-4 text-muted-foreground" />
                   <select
                     value={categoryFilter}
                     onChange={(e) => setCategoryFilter(e.target.value)}
-                    className="px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                    className="px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent w-full sm:w-auto"
                   >
                     <option value="all">All Categories</option>
                     {uniqueCategories.map((c) => (
@@ -226,12 +241,12 @@ const EmployeeMedicines = () => {
                     ))}
                   </select>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 w-full sm:w-auto">
                   <span className="text-xs text-muted-foreground">Expiry</span>
                   <select
                     value={expiryFilter}
                     onChange={(e) => setExpiryFilter(e.target.value)}
-                    className="px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                    className="px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent w-full sm:w-auto"
                   >
                     <option value="all">All</option>
                     <option value="active">Active</option>
@@ -249,7 +264,7 @@ const EmployeeMedicines = () => {
                       setCategoryFilter("all");
                       setExpiryFilter("all");
                     }}
-                    className="px-3 py-2 text-sm bg-muted hover:bg-muted/80 text-muted-foreground rounded-lg transition-colors"
+                    className="px-3 py-2 text-sm bg-muted hover:bg-muted/80 text-muted-foreground rounded-lg transition-colors w-full sm:w-auto"
                   >
                     Clear
                   </button>
@@ -302,6 +317,9 @@ const EmployeeMedicines = () => {
                                 </span>
                                 <span className="font-mono">
                                   {m.batchNumber}
+                                </span>
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-medium">
+                                  {formatBirr(sellingValue(m))}
                                 </span>
                                 <span
                                   className={`inline-flex items-center px-2 py-0.5 rounded-full font-medium ${
@@ -381,6 +399,9 @@ const EmployeeMedicines = () => {
                           Batch
                         </th>
                         <th className="text-left py-3 px-4 font-medium text-foreground">
+                          Price
+                        </th>
+                        <th className="text-left py-3 px-4 font-medium text-foreground">
                           Expiry
                         </th>
                         <th className="text-left py-3 px-4 font-medium text-foreground">
@@ -431,6 +452,9 @@ const EmployeeMedicines = () => {
                               </td>
                               <td className="py-3 px-4 text-muted-foreground font-mono text-sm">
                                 {m.batchNumber}
+                              </td>
+                              <td className="py-3 px-4 text-foreground">
+                                {formatBirr(sellingValue(m))}
                               </td>
                               <td className="py-3 px-4">
                                 <span

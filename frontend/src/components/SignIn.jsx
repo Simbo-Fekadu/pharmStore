@@ -48,7 +48,7 @@ const SignIn = () => {
         setIsError(false);
         setTimeout(() => {
           const role = data.user?.role;
-          if (role === "admin") navigate("/admin");
+          if (role === "admin" || role === "super_admin") navigate("/admin");
           else navigate("/employee");
         }, 1000);
       } else {

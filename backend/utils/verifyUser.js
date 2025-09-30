@@ -18,14 +18,17 @@ export const verifyToken = (req, res, next) => {
 };
 
 export const requireAdmin = (req, _res, next) => {
-  if (!req.user || req.user.role !== "admin") {
+  if (!req.user || !["admin", "super_admin"].includes(req.user.role)) {
     return next(errorHandler(403, "Admin only"));
   }
   next();
 };
 
 export const requireInventoryAccess = (req, _res, next) => {
-  if (!req.user || !["admin", "inventory_manager"].includes(req.user.role)) {
+  if (
+    !req.user ||
+    !["super_admin", "admin", "inventory_manager"].includes(req.user.role)
+  ) {
     return next(errorHandler(403, "Inventory access required"));
   }
   next();

