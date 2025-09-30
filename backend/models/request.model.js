@@ -12,6 +12,12 @@ const requestSchema = new mongoose.Schema(
       ref: "Branch",
       required: true,
     },
+    // Multi-tenant scoping: each request belongs to a pharmacy (implicit via branch/medicine, but explicit for faster queries)
+    pharmacy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Pharmacy",
+      index: true,
+    },
     quantity: { type: Number, required: true, min: 1 },
     createdByUserId: {
       type: mongoose.Schema.Types.ObjectId,
