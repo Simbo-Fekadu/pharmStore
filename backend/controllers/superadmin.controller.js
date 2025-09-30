@@ -7,6 +7,7 @@ import Branch from "../models/branch.model.js";
 import Request from "../models/request.model.js";
 import { StockBalance, StockLedger } from "../models/inventory.model.js";
 import Inventory from "../models/inventory.model.js";
+import Pharmacy from "../models/pharmacy.model.js";
 
 // Audit log is a stub for now; later you can persist to a collection
 function logAudit(action, actorId, meta = {}) {
@@ -408,4 +409,93 @@ export const branchDetailOverview = async (req, res, next) => {
   } catch (e) {
     next(errorHandler(500, e.message));
   }
+};
+
+// ---- Pharmacy (tenant) management ----
+export const listPharmacies = async (_req, res, next) => {
+  try {
+    const pharmacies = await Pharmacy.find().select("name code status address createdAt updatedAt").lean();
+    res.json({ success: true, pharmacies });
+  } catch (e) { next(errorHandler(500, e.message)); }
+};
+
+export const createPharmacy = async (req, res, next) => {
+  try {
+    const { name, code, address, primaryAdminEmail } = req.body;
+    if (!name || !code) return next(errorHandler(400, "name & code required"));
+    const exists = await Pharmacy.findOne({ $or: [{ name }, { code: code.toUpperCase() }] });
+    if (exists) return next(errorHandler(409, "Pharmacy name or code exists"));
+    const pharmacy = await Pharmacy.create({ name, code: code.toUpperCase(), address });
+    // Optionally attach an existing user as admin if email provided
+    if (primaryAdminEmail) {
+      const user = await User.findOne({ email: primaryAdminEmail });
+      if (user && user.role !== 'super_admin') {
+        user.pharmacy = pharmacy._id;
+        if (user.role !== 'admin') user.role = 'admin';
+        await user.save();
+        pharmacy.primaryAdmin = user._id;
+        await pharmacy.save();
+      }
+    }
+    res.status(201).json({ success: true, pharmacy });
+  } catch (e) { next(errorHandler(400, e.message)); }
+};
+
+export const updatePharmacy = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { name, code, address, status } = req.body;
+    const pharmacy = await Pharmacy.findById(id);
+    if (!pharmacy) return next(errorHandler(404, "Not found"));
+    if (name) pharmacy.name = name;
+    if (code) pharmacy.code = code.toUpperCase();
+    if (address !== undefined) pharmacy.address = address;
+    if (status && ["ACTIVE","SUSPENDED"].includes(status)) pharmacy.status = status;
+    await pharmacy.save();
+    res.json({ success: true, pharmacy });
+  } catch (e) { next(errorHandler(400, e.message)); }
+};
+
+export const pharmacySummary = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const pharmacy = await Pharmacy.findById(id).lean();
+    if (!pharmacy) return next(errorHandler(404, "Not found"));
+    const [userCounts, branchCount, medCounts, requestCounts] = await Promise.all([
+      User.aggregate([
+        { $match: { pharmacy: pharmacy._id } },
+        { $group: { _id: "$role", count: { $sum: 1 } } },
+      ]),
+      Branch.countDocuments({ pharmacy: pharmacy._id }),
+      Medicine.aggregate([
+        { $match: { pharmacy: pharmacy._id } },
+        { $group: { _id: "lifecycle", total: { $sum: 1 }, expired: { $sum: { $cond: [{ $lt: ["$expiryDate", new Date()] }, 1, 0] } } } },
+      ]).catch(() => []),
+      Request.aggregate([
+        { $match: { pharmacy: pharmacy._id } },
+        { $group: { _id: "$status", count: { $sum: 1 } } },
+      ]).catch(() => []),
+    ]);
+    const roleMap = userCounts.reduce((a,r)=>{a[r._id]=r.count;return a;},{});
+    const reqMap = requestCounts.reduce((a,r)=>{a[r._id]=r.count;return a;},{});
+    const medMeta = medCounts[0] || { total: 0, expired: 0 };
+    res.json({ success: true, pharmacy, summary: {
+      users: roleMap,
+      branches: branchCount,
+      medicines: { total: medMeta.total || 0, expired: medMeta.expired || 0 },
+      requests: reqMap,
+    }});
+  } catch (e) { next(errorHandler(500, e.message)); }
+};
+
+export const deletePharmacy = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const pharmacy = await Pharmacy.findById(id);
+    if (!pharmacy) return next(errorHandler(404, "Not found"));
+    const dependentUser = await User.findOne({ pharmacy: pharmacy._id });
+    if (dependentUser) return next(errorHandler(409, "Pharmacy not empty"));
+    await Pharmacy.deleteOne({ _id: id });
+    res.json({ success: true, message: "Deleted" });
+  } catch (e) { next(errorHandler(500, e.message)); }
 };

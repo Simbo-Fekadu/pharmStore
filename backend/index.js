@@ -249,21 +249,34 @@ app.post("/backend/maintenance/backfill-pharmacy", async (req, res) => {
   try {
     // Minimal auth: ensure token + super admin
     const authHeader = req.headers.authorization || "";
-    if (!req.cookies.access_token && !authHeader.toLowerCase().startsWith("bearer")) {
+    if (
+      !req.cookies.access_token &&
+      !authHeader.toLowerCase().startsWith("bearer")
+    ) {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
     // Lazy decode to read role without full verify (reuse verifyToken ideally, but keeping isolated)
     // eslint-disable-next-line global-require
     const jwt = await import("jsonwebtoken");
     let token = req.cookies.access_token;
-    if (!token && authHeader.toLowerCase().startsWith("bearer ")) token = authHeader.slice(7);
+    if (!token && authHeader.toLowerCase().startsWith("bearer "))
+      token = authHeader.slice(7);
     let payload;
-    try { payload = jwt.default.verify(token, JWT_SECRET); } catch { return res.status(403).json({ success:false, message:"Forbidden" }); }
-    if (payload.role !== "super_admin") return res.status(403).json({ success:false, message:"Forbidden" });
+    try {
+      payload = jwt.default.verify(token, JWT_SECRET);
+    } catch {
+      return res.status(403).json({ success: false, message: "Forbidden" });
+    }
+    if (payload.role !== "super_admin")
+      return res.status(403).json({ success: false, message: "Forbidden" });
 
     let pharmacy = await Pharmacy.findOne({ code: "ZELALEM" });
     if (!pharmacy) {
-      pharmacy = await Pharmacy.create({ name: "Zelalem Pharmacy", code: "ZELALEM", address: "" });
+      pharmacy = await Pharmacy.create({
+        name: "Zelalem Pharmacy",
+        code: "ZELALEM",
+        address: "",
+      });
     }
     const pid = pharmacy._id;
     const User = (await import("./models/user.model.js")).default;
@@ -273,15 +286,34 @@ app.post("/backend/maintenance/backfill-pharmacy", async (req, res) => {
     const Request = (await import("./models/request.model.js")).default;
 
     const ops = await Promise.all([
-      User.updateMany({ role: { $ne: "super_admin" }, pharmacy: { $exists: false } }, { $set: { pharmacy: pid } }),
-      Branch.updateMany({ pharmacy: { $exists: false } }, { $set: { pharmacy: pid } }),
-      Medicine.updateMany({ pharmacy: { $exists: false } }, { $set: { pharmacy: pid } }),
-      Supplier.updateMany({ pharmacy: { $exists: false } }, { $set: { pharmacy: pid } }),
-      Request.updateMany({ pharmacy: { $exists: false } }, { $set: { pharmacy: pid } }).catch(()=>({modifiedCount:0})),
+      User.updateMany(
+        { role: { $ne: "super_admin" }, pharmacy: { $exists: false } },
+        { $set: { pharmacy: pid } }
+      ),
+      Branch.updateMany(
+        { pharmacy: { $exists: false } },
+        { $set: { pharmacy: pid } }
+      ),
+      Medicine.updateMany(
+        { pharmacy: { $exists: false } },
+        { $set: { pharmacy: pid } }
+      ),
+      Supplier.updateMany(
+        { pharmacy: { $exists: false } },
+        { $set: { pharmacy: pid } }
+      ),
+      Request.updateMany(
+        { pharmacy: { $exists: false } },
+        { $set: { pharmacy: pid } }
+      ).catch(() => ({ modifiedCount: 0 })),
     ]);
-    res.json({ success: true, message: "Backfill complete", modified: ops.map(o=>o.modifiedCount) });
+    res.json({
+      success: true,
+      message: "Backfill complete",
+      modified: ops.map((o) => o.modifiedCount),
+    });
   } catch (e) {
-    res.status(500).json({ success:false, message: e.message });
+    res.status(500).json({ success: false, message: e.message });
   }
 });
 

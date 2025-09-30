@@ -11,6 +11,11 @@ import {
   systemOverview,
   branchesOverview,
   branchDetailOverview,
+  listPharmacies,
+  createPharmacy,
+  updatePharmacy,
+  pharmacySummary,
+  deletePharmacy,
 } from "../controllers/superadmin.controller.js";
 
 const router = express.Router();
@@ -25,5 +30,11 @@ router.get("/stats", statsSummary);
 router.get("/overview", systemOverview);
 router.get("/branches", branchesOverview);
 router.get("/branches/:id", branchDetailOverview);
+// Pharmacies (tenants)
+router.get("/pharmacies", listPharmacies);
+router.post("/pharmacies", createPharmacy);
+router.get("/pharmacies/:id", pharmacySummary);
+router.patch("/pharmacies/:id", updatePharmacy);
+router.delete("/pharmacies/:id", deletePharmacy);
 
 export default router;
