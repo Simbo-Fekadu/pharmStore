@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import SuperAdminDashboard from "./SuperAdminDashboard.jsx";
 import SuperAdminBranches from "./SuperAdminBranches.jsx";
+import SuperAdminPharmacies from "./SuperAdminPharmacies.jsx";
 import { useNavigate } from "react-router-dom";
 import {
   Package,
@@ -21,7 +22,7 @@ const AdminDashboard = () => {
     localStorage.getItem("role") === "super_admin";
   const [superMode, setSuperMode] = useState(() =>
     isSuper
-      ? localStorage.getItem("super_admin_mode") || "branches"
+      ? localStorage.getItem("super_admin_mode") || "pharmacies"
       : "overview"
   );
   useEffect(() => {
@@ -181,6 +182,16 @@ const AdminDashboard = () => {
               System Overview
             </button>
             <button
+              onClick={() => switchSuperMode("pharmacies")}
+              className={`px-3 py-1.5 rounded border transition ${
+                superMode === "pharmacies"
+                  ? "bg-[var(--brand)] text-white border-[var(--brand)]"
+                  : "bg-white/10 border-white/10 hover:bg-white/20"
+              }`}
+            >
+              Pharmacies
+            </button>
+            <button
               onClick={() => switchSuperMode("branches")}
               className={`px-3 py-1.5 rounded border transition ${
                 superMode === "branches"
@@ -188,15 +199,13 @@ const AdminDashboard = () => {
                   : "bg-white/10 border-white/10 hover:bg-white/20"
               }`}
             >
-              Branches Grid
+              Branches (All)
             </button>
           </div>
         </div>
-        {superMode === "branches" ? (
-          <SuperAdminBranches />
-        ) : (
-          <SuperAdminDashboard />
-        )}
+        {superMode === "overview" && <SuperAdminDashboard />}
+        {superMode === "pharmacies" && <SuperAdminPharmacies />}
+        {superMode === "branches" && <SuperAdminBranches />}
       </div>
     );
   }
