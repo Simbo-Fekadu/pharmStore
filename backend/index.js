@@ -279,6 +279,47 @@ app.get("/backend/_routes", (_req, res) => {
   }
 });
 
+// Optional debug: list routes at startup if DEBUG_ROUTES=1
+if (process.env.DEBUG_ROUTES === "1") {
+  setTimeout(() => {
+    try {
+      const walk = (stack, prefix = "") => {
+        const acc = [];
+        stack.forEach((l) => {
+          if (l.route) {
+            const p = prefix + l.route.path;
+            const methods = Object.keys(l.route.methods)
+              .filter((m) => l.route.methods[m])
+              .map((m) => m.toUpperCase());
+            acc.push({ path: p, methods });
+          } else if (l.name === "router" && l.handle?.stack) {
+            acc.push(...walk(l.handle.stack, prefix));
+          }
+        });
+        return acc;
+      };
+      const all = walk(app._router.stack).filter((r) => r.path?.startsWith("/backend"));
+      console.log(`[Routes] Registered ${all.length} backend routes`);
+    } catch (e) {
+      console.warn("[Routes] Failed to enumerate routes:", e.message);
+    }
+  }, 500);
+}
+
+// JSON 404 for any /backend path not matched (avoid default HTML)
+app.use("/backend", (req, res, next) => {
+  if (req.method === "OPTIONS") return next();
+  // If we reached here no route matched under /backend
+  if (!res.headersSent) {
+    return res.status(404).json({
+      success: false,
+      statusCode: 404,
+      message: `Not found: ${req.originalUrl}`,
+    });
+  }
+  next();
+});
+
 app.use((err, req, res, _next) => {
   const statusCode = err.statusCode || 500;
   const message = err.message || "Internal server error";

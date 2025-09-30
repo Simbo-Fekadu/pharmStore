@@ -43,10 +43,23 @@ export default function SuperAdminDashboard() {
     try {
       const res = await fetch(`${API}/superadmin/overview`, {
         credentials: "include",
+        headers: { Accept: "application/json" },
       });
-      const json = await res.json();
-      if (res.ok && json.success) setData(json.overview);
-      else throw new Error(json.message || "Failed to load overview");
+      const text = await res.text();
+      let json;
+      try {
+        json = JSON.parse(text);
+      } catch {
+        const preview = text.slice(0, 200).replace(/\s+/g, " ");
+        throw new Error(
+          `Non-JSON response (status ${res.status}). Preview: ${preview}`
+        );
+      }
+      if (res.ok && json.success) {
+        setData(json.overview);
+      } else {
+        throw new Error(json.message || `Request failed (${res.status})`);
+      }
     } catch (e) {
       setError(e.message);
     } finally {

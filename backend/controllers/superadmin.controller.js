@@ -260,11 +260,7 @@ export const branchesOverview = async (_req, res, next) => {
           itemCount: { $sum: 1 },
           expired: {
             $sum: {
-              $cond: [
-                { $lt: ["$expiryDate", now] },
-                1,
-                0
-              ],
+              $cond: [{ $lt: ["$expiryDate", now] }, 1, 0],
             },
           },
           nearExpiry: {
@@ -286,17 +282,22 @@ export const branchesOverview = async (_req, res, next) => {
       },
     ]);
     const invMap = invAgg.reduce((acc, r) => {
-      acc[r._id.toString()] = r; return acc; }, {});
+      acc[r._id.toString()] = r;
+      return acc;
+    }, {});
 
     // Pending requests per branch
     const reqAgg = await Request.aggregate([
       { $match: { branch: { $in: branchIds }, status: "Pending" } },
       { $group: { _id: "$branch", pending: { $sum: 1 } } },
     ]);
-    const reqMap = reqAgg.reduce((acc, r) => { acc[r._id.toString()] = r.pending; return acc; }, {});
+    const reqMap = reqAgg.reduce((acc, r) => {
+      acc[r._id.toString()] = r.pending;
+      return acc;
+    }, {});
 
     const branchesOut = branches.map((b) => {
-      const inv = invMap[b._id.toString()] || {}; 
+      const inv = invMap[b._id.toString()] || {};
       return {
         id: b._id,
         name: b.name,
@@ -323,7 +324,10 @@ export const branchDetailOverview = async (req, res, next) => {
     if (!branch) return next(errorHandler(404, "Branch not found"));
     const now = new Date();
     const nearCut = new Date(Date.now() + 90 * 86400000);
-    const invDocs = await Inventory.find({ locationType: "Branch", locationId: id })
+    const invDocs = await Inventory.find({
+      locationType: "Branch",
+      locationId: id,
+    })
       .populate("medicine", "medicineName category expiryDate")
       .lean();
 
@@ -354,7 +358,10 @@ export const branchDetailOverview = async (req, res, next) => {
       .sort((a, b) => b.quantity - a.quantity)
       .slice(0, 15);
 
-    const pendingRequests = await Request.countDocuments({ branch: id, status: "Pending" });
+    const pendingRequests = await Request.countDocuments({
+      branch: id,
+      status: "Pending",
+    });
     const recentRequests = await Request.find({ branch: id })
       .sort({ createdAt: -1 })
       .limit(5)
@@ -379,7 +386,7 @@ export const branchDetailOverview = async (req, res, next) => {
       },
       requests: {
         pending: pendingRequests,
-        recent: recentRequests.map(r => ({
+        recent: recentRequests.map((r) => ({
           id: r._id,
           medicine: r.medicine?.medicineName,
           qty: r.quantity,
@@ -387,7 +394,7 @@ export const branchDetailOverview = async (req, res, next) => {
           createdAt: r.createdAt,
         })),
       },
-      recentTransactions: recentTransactions.map(t => ({
+      recentTransactions: recentTransactions.map((t) => ({
         id: t._id,
         medicine: t.medicineId?.medicineName,
         qty: t.quantity,

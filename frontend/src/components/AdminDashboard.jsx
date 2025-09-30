@@ -17,9 +17,12 @@ const API = getApiBase() + "/backend";
 // Dashboard with summary metrics
 const AdminDashboard = () => {
   const isSuper =
-    typeof window !== "undefined" && localStorage.getItem("role") === "super_admin";
+    typeof window !== "undefined" &&
+    localStorage.getItem("role") === "super_admin";
   const [superMode, setSuperMode] = useState(() =>
-    isSuper ? localStorage.getItem("super_admin_mode") || "overview" : "overview"
+    isSuper
+      ? localStorage.getItem("super_admin_mode") || "branches"
+      : "overview"
   );
   useEffect(() => {
     if (!isSuper) return;
