@@ -14,6 +14,7 @@ const supplierSchema = new mongoose.Schema({
     type: String,
     required: false,
   },
+  pharmacy: { type: mongoose.Schema.Types.ObjectId, ref: "Pharmacy" },
 });
 
 const Supplier = mongoose.model("Supplier", supplierSchema);

@@ -4,6 +4,7 @@ const branchSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, unique: true },
     address: { type: String },
+    pharmacy: { type: mongoose.Schema.Types.ObjectId, ref: "Pharmacy" },
   },
   { timestamps: true }
 );

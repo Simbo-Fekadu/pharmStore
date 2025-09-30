@@ -17,6 +17,7 @@ const userSchema = new mongoose.Schema(
       enum: ["super_admin", "admin", "employee", "inventory_manager"],
       default: "employee",
     },
+    pharmacy: { type: mongoose.Schema.Types.ObjectId, ref: "Pharmacy" },
     branch: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Branch",

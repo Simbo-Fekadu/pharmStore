@@ -77,6 +77,7 @@ const medicineSchema = new mongoose.Schema(
       required: true,
       default: "system",
     },
+    pharmacy: { type: mongoose.Schema.Types.ObjectId, ref: "Pharmacy" },
     isDeleted: {
       type: Boolean,
       default: false,
