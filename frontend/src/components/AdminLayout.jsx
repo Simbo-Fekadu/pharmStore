@@ -12,8 +12,8 @@ import {
   LogOut,
 } from "lucide-react";
 
-// Shared admin sidebar layout
-const links = [
+// Base links for normal admin users
+const adminLinks = [
   { to: "/admin", label: "Dashboard" },
   { to: "/admin/medicines", label: "Medicines" },
   { to: "/admin/medicines/add", label: "Add Medicine" },
@@ -25,6 +25,13 @@ const links = [
   { to: "/admin/branches", label: "Branches" },
   { to: "/admin/chat", label: "Chat" },
   { to: "/admin/transactions", label: "Transactions" },
+];
+
+// Additional / reorganized links for super admin (multi-tenant management first)
+const superAdminExtra = [
+  { to: "/admin", label: "Super Overview" },
+  { to: "/admin", label: "Pharmacies" , superMode: "pharmacies"},
+  { to: "/admin", label: "All Branches", superMode: "branches"},
 ];
 
 const AdminLayout = () => {
@@ -116,25 +123,55 @@ const AdminLayout = () => {
               </span>
             )}
         </div>
-        <nav className="flex flex-col gap-1 text-sm">
-          {links.map((l) => (
-            <button
-              key={l.to}
-              onClick={() => navigate(l.to)}
-              className={`text-left px-3 py-2 rounded transition font-medium ${
-                pathname === l.to
-                  ? "bg-[var(--brand)] text-white"
-                  : "hover:bg-[var(--brand)]/60"
-              }`}
-            >
-              {l.label}
-              {l.to === "/admin/chat" && unread > 0 && (
-                <span className="ml-2 inline-flex items-center justify-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-rose-500 text-white">
-                  {unread}
-                </span>
-              )}
-            </button>
-          ))}
+        <nav className="flex flex-col gap-4 text-sm">
+          {typeof window !== 'undefined' && localStorage.getItem('role') === 'super_admin' && (
+            <div>
+              <div className="text-[10px] uppercase tracking-wider font-semibold text-white/40 px-3 mb-1">Multi-Tenant</div>
+              <div className="flex flex-col gap-1">
+                {superAdminExtra.map(l => (
+                  <button
+                    key={l.label + l.superMode}
+                    onClick={() => {
+                      if (l.superMode) {
+                        localStorage.setItem('super_admin_mode', l.superMode);
+                      }
+                      navigate(l.to);
+                    }}
+                    className={`text-left px-3 py-2 rounded transition font-medium ${
+                      pathname === l.to && (!l.superMode || localStorage.getItem('super_admin_mode') === l.superMode)
+                        ? 'bg-[var(--brand)] text-white'
+                        : 'hover:bg-[var(--brand)]/60'
+                    }`}
+                  >
+                    {l.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          <div>
+            <div className="text-[10px] uppercase tracking-wider font-semibold text-white/40 px-3 mb-1">Operations</div>
+            <div className="flex flex-col gap-1">
+              {adminLinks.map((l) => (
+                <button
+                  key={l.to}
+                  onClick={() => navigate(l.to)}
+                  className={`text-left px-3 py-2 rounded transition font-medium ${
+                    pathname === l.to
+                      ? "bg-[var(--brand)] text-white"
+                      : "hover:bg-[var(--brand)]/60"
+                  }`}
+                >
+                  {l.label}
+                  {l.to === "/admin/chat" && unread > 0 && (
+                    <span className="ml-2 inline-flex items-center justify-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-rose-500 text-white">
+                      {unread}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
           {/* Inventory collapsible group */}
           <div className="mt-2">
             <button
@@ -254,7 +291,27 @@ const AdminLayout = () => {
               </button>
             </div>
             <nav className="flex flex-col gap-1 text-sm overflow-y-auto">
-              {links.map((l) => (
+              {typeof window !== 'undefined' && localStorage.getItem('role') === 'super_admin' && (
+                <div className="flex flex-col gap-1 mb-4">
+                  <div className="text-[10px] uppercase tracking-wider font-semibold text-white/40 px-3">Multi-Tenant</div>
+                  {superAdminExtra.map(l => (
+                    <button
+                      key={l.label + l.superMode}
+                      onClick={() => {
+                        if (l.superMode) localStorage.setItem('super_admin_mode', l.superMode);
+                        navigate(l.to);
+                        setMobileOpen(false);
+                      }}
+                      className={`text-left px-3 py-2 rounded transition font-medium ${
+                        pathname === l.to && (!l.superMode || localStorage.getItem('super_admin_mode') === l.superMode)
+                          ? 'bg-[var(--brand)] text-white'
+                          : 'hover:bg-[var(--brand)]/60'
+                      }`}
+                    >{l.label}</button>
+                  ))}
+                </div>
+              )}
+              {adminLinks.map((l) => (
                 <button
                   key={l.to}
                   onClick={() => {
