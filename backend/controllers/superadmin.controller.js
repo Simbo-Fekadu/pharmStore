@@ -414,31 +414,56 @@ export const branchDetailOverview = async (req, res, next) => {
 // ---- Pharmacy (tenant) management ----
 export const listPharmacies = async (_req, res, next) => {
   try {
-    const pharmacies = await Pharmacy.find().select("name code status address createdAt updatedAt").lean();
+    let pharmacies = await Pharmacy.find()
+      .select("name code status address createdAt updatedAt")
+      .lean();
+    if (!pharmacies.length) {
+      // Auto-create default pharmacy if legacy data has none
+      let defaultPh = await Pharmacy.findOne({ code: "ZELALEM" });
+      if (!defaultPh) {
+        defaultPh = await Pharmacy.create({
+          name: "Zelalem Pharmacy",
+          code: "ZELALEM",
+          address: "",
+        });
+        console.log("[superadmin] Bootstrapped Zelalem Pharmacy (empty state)");
+      }
+      pharmacies = [defaultPh.toObject()];
+    }
     res.json({ success: true, pharmacies });
-  } catch (e) { next(errorHandler(500, e.message)); }
+  } catch (e) {
+    next(errorHandler(500, e.message));
+  }
 };
 
 export const createPharmacy = async (req, res, next) => {
   try {
     const { name, code, address, primaryAdminEmail } = req.body;
     if (!name || !code) return next(errorHandler(400, "name & code required"));
-    const exists = await Pharmacy.findOne({ $or: [{ name }, { code: code.toUpperCase() }] });
+    const exists = await Pharmacy.findOne({
+      $or: [{ name }, { code: code.toUpperCase() }],
+    });
     if (exists) return next(errorHandler(409, "Pharmacy name or code exists"));
-    const pharmacy = await Pharmacy.create({ name, code: code.toUpperCase(), address });
+    const pharmacy = await Pharmacy.create({
+      name,
+      code: code.toUpperCase(),
+      address,
+    });
     // Optionally attach an existing user as admin if email provided
     if (primaryAdminEmail) {
       const user = await User.findOne({ email: primaryAdminEmail });
-      if (user && user.role !== 'super_admin') {
+      if (user && user.role !== "super_admin") {
         user.pharmacy = pharmacy._id;
-        if (user.role !== 'admin') user.role = 'admin';
+        if (user.role !== "admin") user.role = "admin";
         await user.save();
         pharmacy.primaryAdmin = user._id;
         await pharmacy.save();
       }
     }
     res.status(201).json({ success: true, pharmacy });
-  } catch (e) { next(errorHandler(400, e.message)); }
+  } catch (e) {
+    next(errorHandler(400, e.message));
+  }
 };
 
 export const updatePharmacy = async (req, res, next) => {
@@ -450,10 +475,13 @@ export const updatePharmacy = async (req, res, next) => {
     if (name) pharmacy.name = name;
     if (code) pharmacy.code = code.toUpperCase();
     if (address !== undefined) pharmacy.address = address;
-    if (status && ["ACTIVE","SUSPENDED"].includes(status)) pharmacy.status = status;
+    if (status && ["ACTIVE", "SUSPENDED"].includes(status))
+      pharmacy.status = status;
     await pharmacy.save();
     res.json({ success: true, pharmacy });
-  } catch (e) { next(errorHandler(400, e.message)); }
+  } catch (e) {
+    next(errorHandler(400, e.message));
+  }
 };
 
 export const pharmacySummary = async (req, res, next) => {
@@ -461,31 +489,52 @@ export const pharmacySummary = async (req, res, next) => {
     const { id } = req.params;
     const pharmacy = await Pharmacy.findById(id).lean();
     if (!pharmacy) return next(errorHandler(404, "Not found"));
-    const [userCounts, branchCount, medCounts, requestCounts] = await Promise.all([
-      User.aggregate([
-        { $match: { pharmacy: pharmacy._id } },
-        { $group: { _id: "$role", count: { $sum: 1 } } },
-      ]),
-      Branch.countDocuments({ pharmacy: pharmacy._id }),
-      Medicine.aggregate([
-        { $match: { pharmacy: pharmacy._id } },
-        { $group: { _id: "lifecycle", total: { $sum: 1 }, expired: { $sum: { $cond: [{ $lt: ["$expiryDate", new Date()] }, 1, 0] } } } },
-      ]).catch(() => []),
-      Request.aggregate([
-        { $match: { pharmacy: pharmacy._id } },
-        { $group: { _id: "$status", count: { $sum: 1 } } },
-      ]).catch(() => []),
-    ]);
-    const roleMap = userCounts.reduce((a,r)=>{a[r._id]=r.count;return a;},{});
-    const reqMap = requestCounts.reduce((a,r)=>{a[r._id]=r.count;return a;},{});
+    const [userCounts, branchCount, medCounts, requestCounts] =
+      await Promise.all([
+        User.aggregate([
+          { $match: { pharmacy: pharmacy._id } },
+          { $group: { _id: "$role", count: { $sum: 1 } } },
+        ]),
+        Branch.countDocuments({ pharmacy: pharmacy._id }),
+        Medicine.aggregate([
+          { $match: { pharmacy: pharmacy._id } },
+          {
+            $group: {
+              _id: "lifecycle",
+              total: { $sum: 1 },
+              expired: {
+                $sum: { $cond: [{ $lt: ["$expiryDate", new Date()] }, 1, 0] },
+              },
+            },
+          },
+        ]).catch(() => []),
+        Request.aggregate([
+          { $match: { pharmacy: pharmacy._id } },
+          { $group: { _id: "$status", count: { $sum: 1 } } },
+        ]).catch(() => []),
+      ]);
+    const roleMap = userCounts.reduce((a, r) => {
+      a[r._id] = r.count;
+      return a;
+    }, {});
+    const reqMap = requestCounts.reduce((a, r) => {
+      a[r._id] = r.count;
+      return a;
+    }, {});
     const medMeta = medCounts[0] || { total: 0, expired: 0 };
-    res.json({ success: true, pharmacy, summary: {
-      users: roleMap,
-      branches: branchCount,
-      medicines: { total: medMeta.total || 0, expired: medMeta.expired || 0 },
-      requests: reqMap,
-    }});
-  } catch (e) { next(errorHandler(500, e.message)); }
+    res.json({
+      success: true,
+      pharmacy,
+      summary: {
+        users: roleMap,
+        branches: branchCount,
+        medicines: { total: medMeta.total || 0, expired: medMeta.expired || 0 },
+        requests: reqMap,
+      },
+    });
+  } catch (e) {
+    next(errorHandler(500, e.message));
+  }
 };
 
 export const deletePharmacy = async (req, res, next) => {
@@ -497,5 +546,7 @@ export const deletePharmacy = async (req, res, next) => {
     if (dependentUser) return next(errorHandler(409, "Pharmacy not empty"));
     await Pharmacy.deleteOne({ _id: id });
     res.json({ success: true, message: "Deleted" });
-  } catch (e) { next(errorHandler(500, e.message)); }
+  } catch (e) {
+    next(errorHandler(500, e.message));
+  }
 };
