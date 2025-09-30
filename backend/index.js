@@ -250,6 +250,8 @@ app.use("/backend/superadmin", superAdminRouter);
 import maintenanceRouter from "./routes/maintenance.route.js";
 app.use("/backend/maintenance", maintenanceRouter);
 import Pharmacy from "./models/pharmacy.model.js";
+import exportRouter from "./routes/export.route.js";
+app.use("/backend/export", exportRouter);
 
 // Temporary migration route (super admin only) to backfill pharmacy
 app.post("/backend/maintenance/backfill-pharmacy", async (req, res) => {

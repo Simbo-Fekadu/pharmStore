@@ -548,7 +548,7 @@ export const pharmacySummary = async (req, res, next) => {
     } catch (backfillErr) {
       console.warn("[pharmacySummary] backfill warning:", backfillErr.message);
     }
-    const [userCounts, branchCount, medCounts, requestCounts] =
+    const [userCounts, branchCount, medCounts, requestCounts, txnCount] =
       await Promise.all([
         User.aggregate([
           { $match: { pharmacy: pharmacy._id } },
@@ -571,6 +571,19 @@ export const pharmacySummary = async (req, res, next) => {
           { $match: { pharmacy: pharmacy._id } },
           { $group: { _id: "$status", count: { $sum: 1 } } },
         ]).catch(() => []),
+        // count transactions via StockLedger -> branches belonging to pharmacy
+        (async () => {
+          try {
+            const branches = await Branch.find({ pharmacy: pharmacy._id })
+              .select("_id")
+              .lean();
+            const ids = branches.map((b) => b._id);
+            if (!ids.length) return 0;
+            return await StockLedger.countDocuments({ locationId: { $in: ids } });
+          } catch {
+            return 0;
+          }
+        })(),
       ]);
     const roleMap = userCounts.reduce((a, r) => {
       a[r._id] = r.count;
@@ -589,6 +602,7 @@ export const pharmacySummary = async (req, res, next) => {
         branches: branchCount,
         medicines: { total: medMeta.total || 0, expired: medMeta.expired || 0 },
         requests: reqMap,
+        transactions: txnCount || 0,
       },
     });
   } catch (e) {
@@ -616,7 +630,10 @@ export const pharmacyUsers = async (req, res, next) => {
     const { id } = req.params;
     const pharmacy = await Pharmacy.findById(id).lean();
     if (!pharmacy) return next(errorHandler(404, "Pharmacy not found"));
-    const users = await User.find({ pharmacy: id, role: { $ne: "super_admin" } })
+    const users = await User.find({
+      pharmacy: id,
+      role: { $ne: "super_admin" },
+    })
       .select("username email role branch createdAt")
       .populate("branch", "name")
       .lean();
@@ -634,7 +651,11 @@ export const pharmacyBranches = async (req, res, next) => {
     const branches = await Branch.find({ pharmacy: id })
       .select("name address createdAt updatedAt")
       .lean();
-    res.json({ success: true, pharmacy: { id, name: pharmacy.name }, branches });
+    res.json({
+      success: true,
+      pharmacy: { id, name: pharmacy.name },
+      branches,
+    });
   } catch (e) {
     next(errorHandler(500, e.message));
   }
@@ -655,7 +676,11 @@ export const pharmacyMedicines = async (req, res, next) => {
       .sort({ createdAt: -1 })
       .limit(500)
       .lean();
-    res.json({ success: true, pharmacy: { id, name: pharmacy.name }, medicines });
+    res.json({
+      success: true,
+      pharmacy: { id, name: pharmacy.name },
+      medicines,
+    });
   } catch (e) {
     next(errorHandler(500, e.message));
   }
@@ -676,7 +701,45 @@ export const pharmacyRequests = async (req, res, next) => {
       .populate("branch", "name")
       .select("quantity status createdAt updatedAt medicine branch")
       .lean();
-    res.json({ success: true, pharmacy: { id, name: pharmacy.name }, requests });
+    res.json({
+      success: true,
+      pharmacy: { id, name: pharmacy.name },
+      requests,
+    });
+  } catch (e) {
+    next(errorHandler(500, e.message));
+  }
+};
+
+// Transactions within a pharmacy (aggregated through branch ownership)
+export const pharmacyTransactions = async (req, res, next) => {
+  try {
+    const { id } = req.params; // pharmacy id
+    const pharmacy = await Pharmacy.findById(id).lean();
+    if (!pharmacy) return next(errorHandler(404, "Pharmacy not found"));
+    const branches = await Branch.find({ pharmacy: id })
+      .select("_id")
+      .lean();
+    const ids = branches.map((b) => b._id);
+    if (!ids.length)
+      return res.json({ success: true, pharmacy: { id, name: pharmacy.name }, transactions: [] });
+    const txns = await StockLedger.find({ locationId: { $in: ids } })
+      .sort({ createdAt: -1 })
+      .limit(500)
+      .select("medicineId locationId quantity transactionType status createdAt")
+      .populate("medicineId", "medicineName")
+      .populate("locationId", "name")
+      .lean();
+    const transactions = txns.map((t) => ({
+      id: t._id,
+      medicine: t.medicineId?.medicineName,
+      branch: t.locationId?.name,
+      qty: t.quantity,
+      type: t.transactionType,
+      status: t.status,
+      createdAt: t.createdAt,
+    }));
+    res.json({ success: true, pharmacy: { id, name: pharmacy.name }, transactions });
   } catch (e) {
     next(errorHandler(500, e.message));
   }

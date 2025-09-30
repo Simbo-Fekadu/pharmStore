@@ -1,7 +1,16 @@
 import { useNavigate, Outlet, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { useTheme } from "./useTheme.js";
-import { ChevronDown, ChevronRight, Package2, Menu, X, Sun, Moon, LogOut } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Package2,
+  Menu,
+  X,
+  Sun,
+  Moon,
+  LogOut,
+} from "lucide-react";
 // (icons import consolidated above)
 
 // Base links for standard admins (hidden for super_admin per request)
@@ -24,6 +33,7 @@ const superAdminExtra = [
   { to: "/admin", label: "Super Overview" },
   { to: "/admin", label: "Pharmacies", superMode: "pharmacies" },
   { to: "/admin", label: "All Branches", superMode: "branches" },
+  { to: "/admin/export", label: "Export Data" },
 ];
 
 const AdminLayout = () => {
@@ -147,76 +157,86 @@ const AdminLayout = () => {
                 </div>
               </div>
             )}
-          <div>
-            <div className="text-[10px] uppercase tracking-wider font-semibold text-white/40 px-3 mb-1">
-              Operations
-            </div>
-            <div className="flex flex-col gap-1">
-              {adminLinks.map((l) => (
-                <button
-                  key={l.to}
-                  onClick={() => navigate(l.to)}
-                  className={`text-left px-3 py-2 rounded transition font-medium ${
-                    pathname === l.to
-                      ? "bg-[var(--brand)] text-white"
-                      : "hover:bg-[var(--brand)]/60"
-                  }`}
-                >
-                  {l.label}
-                  {l.to === "/admin/chat" && unread > 0 && (
-                    <span className="ml-2 inline-flex items-center justify-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-rose-500 text-white">
-                      {unread}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
-          </div>
-          {/* Inventory collapsible group */}
-          <div className="mt-2">
-            <button
-              onClick={() => setInvOpen((o) => !o)}
-              className={`w-full flex items-center justify-between px-3 py-2 rounded font-medium transition ${
-                pathname.startsWith("/admin/inventory")
-                  ? "bg-[var(--brand)] text-white"
-                  : "hover:bg-[var(--brand)]/60"
-              }`}
-            >
-              <span className="inline-flex items-center gap-2">
-                <Package2 className="w-4 h-4" />
-                Inventory
-              </span>
-              {invOpen ? (
-                <ChevronDown className="w-4 h-4" />
-              ) : (
-                <ChevronRight className="w-4 h-4" />
-              )}
-            </button>
-            {invOpen && (
-              <div className="pl-4 pt-1 flex flex-col gap-1">
-                <button
-                  onClick={() => navigate("/admin/inventory/store")}
-                  className={`text-left px-3 py-1.5 rounded text-xs font-medium transition ${
-                    pathname === "/admin/inventory/store"
-                      ? "bg-[var(--brand)] text-white"
-                      : "hover:bg-[var(--brand)]/50"
-                  }`}
-                >
-                  Store Stock
-                </button>
-                <button
-                  onClick={() => navigate("/admin/inventory/branches")}
-                  className={`text-left px-3 py-1.5 rounded text-xs font-medium transition ${
-                    pathname === "/admin/inventory/branches"
-                      ? "bg-[var(--brand)] text-white"
-                      : "hover:bg-[var(--brand)]/50"
-                  }`}
-                >
-                  Branch Requests
-                </button>
+          {!(
+            typeof window !== "undefined" &&
+            localStorage.getItem("role") === "super_admin"
+          ) && (
+            <div>
+              <div className="text-[10px] uppercase tracking-wider font-semibold text-white/40 px-3 mb-1">
+                Operations
               </div>
-            )}
-          </div>
+              <div className="flex flex-col gap-1">
+                {adminLinks.map((l) => (
+                  <button
+                    key={l.to}
+                    onClick={() => navigate(l.to)}
+                    className={`text-left px-3 py-2 rounded transition font-medium ${
+                      pathname === l.to
+                        ? "bg-[var(--brand)] text-white"
+                        : "hover:bg-[var(--brand)]/60"
+                    }`}
+                  >
+                    {l.label}
+                    {l.to === "/admin/chat" && unread > 0 && (
+                      <span className="ml-2 inline-flex items-center justify-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-rose-500 text-white">
+                        {unread}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {/* Inventory collapsible group hidden for super admin */}
+          {!(
+            typeof window !== "undefined" &&
+            localStorage.getItem("role") === "super_admin"
+          ) && (
+            <div className="mt-2">
+              <button
+                onClick={() => setInvOpen((o) => !o)}
+                className={`w-full flex items-center justify-between px-3 py-2 rounded font-medium transition ${
+                  pathname.startsWith("/admin/inventory")
+                    ? "bg-[var(--brand)] text-white"
+                    : "hover:bg-[var(--brand)]/60"
+                }`}
+              >
+                <span className="inline-flex items-center gap-2">
+                  <Package2 className="w-4 h-4" />
+                  Inventory
+                </span>
+                {invOpen ? (
+                  <ChevronDown className="w-4 h-4" />
+                ) : (
+                  <ChevronRight className="w-4 h-4" />
+                )}
+              </button>
+              {invOpen && (
+                <div className="pl-4 pt-1 flex flex-col gap-1">
+                  <button
+                    onClick={() => navigate("/admin/inventory/store")}
+                    className={`text-left px-3 py-1.5 rounded text-xs font-medium transition ${
+                      pathname === "/admin/inventory/store"
+                        ? "bg-[var(--brand)] text-white"
+                        : "hover:bg-[var(--brand)]/50"
+                    }`}
+                  >
+                    Store Stock
+                  </button>
+                  <button
+                    onClick={() => navigate("/admin/inventory/branches")}
+                    className={`text-left px-3 py-1.5 rounded text-xs font-medium transition ${
+                      pathname === "/admin/inventory/branches"
+                        ? "bg-[var(--brand)] text-white"
+                        : "hover:bg-[var(--brand)]/50"
+                    }`}
+                  >
+                    Branch Requests
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </nav>
         {/* Sidebar actions removed; moved to top navbar */}
       </aside>
@@ -323,72 +343,81 @@ const AdminLayout = () => {
                     ))}
                   </div>
                 )}
-              {!(typeof window !== 'undefined' && localStorage.getItem('role') === 'super_admin') && adminLinks.map((l) => (
-                <button
-                  key={l.to}
-                  onClick={() => {
-                    navigate(l.to);
-                    setMobileOpen(false);
-                  }}
-                  className={`text-left px-3 py-2 rounded transition font-medium ${
-                    pathname === l.to
-                      ? "bg-[var(--brand)] text-white"
-                      : "hover:bg-[var(--brand)]/60"
-                  }`}
-                >
-                  {l.label}
-                </button>
-              ))}
-              <div className="mt-2">
-                <button
-                  onClick={() => setInvOpen((o) => !o)}
-                  className={`w-full flex items-center justify-between px-3 py-2 rounded font-medium transition ${
-                    pathname.startsWith("/admin/inventory")
-                      ? "bg-[var(--brand)] text-white"
-                      : "hover:bg-[var(--brand)]/60"
-                  }`}
-                >
-                  <span className="inline-flex items-center gap-2">
-                    <Package2 className="w-4 h-4" />
-                    Inventory
-                  </span>
-                  {invOpen ? (
-                    <ChevronDown className="w-4 h-4" />
-                  ) : (
-                    <ChevronRight className="w-4 h-4" />
+              {!(
+                typeof window !== "undefined" &&
+                localStorage.getItem("role") === "super_admin"
+              ) &&
+                adminLinks.map((l) => (
+                  <button
+                    key={l.to}
+                    onClick={() => {
+                      navigate(l.to);
+                      setMobileOpen(false);
+                    }}
+                    className={`text-left px-3 py-2 rounded transition font-medium ${
+                      pathname === l.to
+                        ? "bg-[var(--brand)] text-white"
+                        : "hover:bg-[var(--brand)]/60"
+                    }`}
+                  >
+                    {l.label}
+                  </button>
+                ))}
+              {!(
+                typeof window !== "undefined" &&
+                localStorage.getItem("role") === "super_admin"
+              ) && (
+                <div className="mt-2">
+                  <button
+                    onClick={() => setInvOpen((o) => !o)}
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded font-medium transition ${
+                      pathname.startsWith("/admin/inventory")
+                        ? "bg-[var(--brand)] text-white"
+                        : "hover:bg-[var(--brand)]/60"
+                    }`}
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      <Package2 className="w-4 h-4" />
+                      Inventory
+                    </span>
+                    {invOpen ? (
+                      <ChevronDown className="w-4 h-4" />
+                    ) : (
+                      <ChevronRight className="w-4 h-4" />
+                    )}
+                  </button>
+                  {invOpen && (
+                    <div className="pl-4 pt-1 flex flex-col gap-1">
+                      <button
+                        onClick={() => {
+                          navigate("/admin/inventory/store");
+                          setMobileOpen(false);
+                        }}
+                        className={`text-left px-3 py-1.5 rounded text-xs font-medium transition ${
+                          pathname === "/admin/inventory/store"
+                            ? "bg-[var(--brand)] text-white"
+                            : "hover:bg-[var(--brand)]/50"
+                        }`}
+                      >
+                        Store Stock
+                      </button>
+                      <button
+                        onClick={() => {
+                          navigate("/admin/inventory/branches");
+                          setMobileOpen(false);
+                        }}
+                        className={`text-left px-3 py-1.5 rounded text-xs font-medium transition ${
+                          pathname === "/admin/inventory/branches"
+                            ? "bg-[var(--brand)] text-white"
+                            : "hover:bg-[var(--brand)]/50"
+                        }`}
+                      >
+                        Branch Requests
+                      </button>
+                    </div>
                   )}
-                </button>
-                {invOpen && (
-                  <div className="pl-4 pt-1 flex flex-col gap-1">
-                    <button
-                      onClick={() => {
-                        navigate("/admin/inventory/store");
-                        setMobileOpen(false);
-                      }}
-                      className={`text-left px-3 py-1.5 rounded text-xs font-medium transition ${
-                        pathname === "/admin/inventory/store"
-                          ? "bg-[var(--brand)] text-white"
-                          : "hover:bg-[var(--brand)]/50"
-                      }`}
-                    >
-                      Store Stock
-                    </button>
-                    <button
-                      onClick={() => {
-                        navigate("/admin/inventory/branches");
-                        setMobileOpen(false);
-                      }}
-                      className={`text-left px-3 py-1.5 rounded text-xs font-medium transition ${
-                        pathname === "/admin/inventory/branches"
-                          ? "bg-[var(--brand)] text-white"
-                          : "hover:bg-[var(--brand)]/50"
-                      }`}
-                    >
-                      Branch Requests
-                    </button>
-                  </div>
-                )}
-              </div>
+                </div>
+              )}
             </nav>
             {/* Drawer actions removed; use top navbar icons */}
           </div>

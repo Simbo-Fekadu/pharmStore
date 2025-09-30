@@ -43,6 +43,11 @@ export default function SuperAdminPharmacyDetail() {
     error: null,
     items: [],
   });
+  const [transactionsData, setTransactionsData] = useState({
+    loading: false,
+    error: null,
+    items: [],
+  });
   // Inline edit state
   const [editing, setEditing] = useState(false);
   const [editValues, setEditValues] = useState({
@@ -132,6 +137,15 @@ export default function SuperAdminPharmacyDetail() {
       !requestsData.loading
     ) {
       fetcher(`${API}/superadmin/pharmacies/${id}/requests`, setRequestsData);
+    } else if (
+      activeTab === "transactions" &&
+      transactionsData.items.length === 0 &&
+      !transactionsData.loading
+    ) {
+      fetcher(
+        `${API}/superadmin/pharmacies/${id}/transactions`,
+        setTransactionsData
+      );
     }
   }, [
     activeTab,
@@ -144,6 +158,8 @@ export default function SuperAdminPharmacyDetail() {
     medicinesData.loading,
     requestsData.items.length,
     requestsData.loading,
+    transactionsData.items.length,
+    transactionsData.loading,
   ]);
 
   // Begin editing when user clicks edit icon
@@ -366,6 +382,12 @@ export default function SuperAdminPharmacyDetail() {
             >
               Requests
             </TabButton>
+            <TabButton
+              active={activeTab === "transactions"}
+              onClick={() => setActiveTab("transactions")}
+            >
+              Transactions
+            </TabButton>
           </div>
           {activeTab === "overview" && (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mt-4">
@@ -373,37 +395,46 @@ export default function SuperAdminPharmacyDetail() {
                 label="Admins"
                 value={roleCounts.admin || 0}
                 icon={<Users className="w-5 h-5" />}
-                onClick={() => setActiveTab('users')}
+                onClick={() => setActiveTab("users")}
               />
               <BigStat
                 label="Employees"
-                value={(roleCounts.employee || 0) + (roleCounts.inventory_manager || 0)}
+                value={
+                  (roleCounts.employee || 0) +
+                  (roleCounts.inventory_manager || 0)
+                }
                 icon={<Users className="w-5 h-5" />}
-                onClick={() => setActiveTab('users')}
+                onClick={() => setActiveTab("users")}
               />
               <BigStat
                 label="Branches"
                 value={summary.branches || 0}
                 icon={<Store className="w-5 h-5" />}
-                onClick={() => setActiveTab('branches')}
+                onClick={() => setActiveTab("branches")}
               />
               <BigStat
                 label="Medicines"
                 value={summary.medicines?.total || 0}
                 icon={<Package className="w-5 h-5" />}
-                onClick={() => setActiveTab('medicines')}
+                onClick={() => setActiveTab("medicines")}
               />
               <BigStat
                 label="Expired"
                 value={summary.medicines?.expired || 0}
                 icon={<Package className="w-5 h-5" />}
-                onClick={() => setActiveTab('medicines')}
+                onClick={() => setActiveTab("medicines")}
               />
               <BigStat
                 label="Pending Requests"
                 value={reqCounts.Pending || 0}
                 icon={<Package className="w-5 h-5" />}
-                onClick={() => setActiveTab('requests')}
+                onClick={() => setActiveTab("requests")}
+              />
+              <BigStat
+                label="Transactions"
+                value={summary.transactions || 0}
+                icon={<Package className="w-5 h-5" />}
+                onClick={() => setActiveTab("transactions")}
               />
             </div>
           )}
@@ -468,6 +499,28 @@ export default function SuperAdminPharmacyDetail() {
               ])}
             />
           )}
+          {activeTab === "transactions" && (
+            <DrillList
+              title="Transactions"
+              state={transactionsData}
+              columns={[
+                "Date",
+                "Branch",
+                "Medicine",
+                "Qty",
+                "Type",
+                "Status",
+              ]}
+              rows={transactionsData.items.map((t) => [
+                new Date(t.createdAt).toLocaleString(),
+                t.branch,
+                t.medicine,
+                t.qty,
+                t.type,
+                t.status,
+              ])}
+            />
+          )}
         </>
       )}
     </div>
@@ -490,12 +543,16 @@ function TabButton({ active, onClick, children }) {
 }
 
 function BigStat({ label, value, icon, onClick }) {
-  const clickable = typeof onClick === 'function';
+  const clickable = typeof onClick === "function";
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`p-4 rounded-xl bg-white/10 border border-white/10 flex flex-col gap-3 text-left transition ${clickable ? 'hover:bg-white/15 focus:outline-none focus:ring-2 focus:ring-[var(--brand)]' : ''}`}
+      className={`p-4 rounded-xl bg-white/10 border border-white/10 flex flex-col gap-3 text-left transition ${
+        clickable
+          ? "hover:bg-white/15 focus:outline-none focus:ring-2 focus:ring-[var(--brand)]"
+          : ""
+      }`}
     >
       <div className="flex items-center justify-between text-white/60 text-[11px] uppercase font-semibold tracking-wide">
         {label}
