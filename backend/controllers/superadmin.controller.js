@@ -489,6 +489,65 @@ export const pharmacySummary = async (req, res, next) => {
     const { id } = req.params;
     const pharmacy = await Pharmacy.findById(id).lean();
     if (!pharmacy) return next(errorHandler(404, "Not found"));
+    // Auto-backfill any legacy documents missing pharmacy reference into this pharmacy.
+    // This is safe because prior to multi-tenant rollout there was only one implicit tenant.
+    try {
+      await Promise.all([
+        User.updateMany(
+          {
+            role: { $ne: "super_admin" },
+            $or: [
+              { pharmacy: { $exists: false } },
+              { pharmacy: null },
+              { pharmacy: { $eq: undefined } },
+            ],
+          },
+          { $set: { pharmacy: pharmacy._id } }
+        ),
+        Branch.updateMany(
+          {
+            $or: [
+              { pharmacy: { $exists: false } },
+              { pharmacy: null },
+              { pharmacy: { $eq: undefined } },
+            ],
+          },
+          { $set: { pharmacy: pharmacy._id } }
+        ),
+        Medicine.updateMany(
+          {
+            $or: [
+              { pharmacy: { $exists: false } },
+              { pharmacy: null },
+              { pharmacy: { $eq: undefined } },
+            ],
+          },
+          { $set: { pharmacy: pharmacy._id } }
+        ),
+        Supplier.updateMany(
+          {
+            $or: [
+              { pharmacy: { $exists: false } },
+              { pharmacy: null },
+              { pharmacy: { $eq: undefined } },
+            ],
+          },
+          { $set: { pharmacy: pharmacy._id } }
+        ),
+        Request.updateMany(
+          {
+            $or: [
+              { pharmacy: { $exists: false } },
+              { pharmacy: null },
+              { pharmacy: { $eq: undefined } },
+            ],
+          },
+          { $set: { pharmacy: pharmacy._id } }
+        ).catch(() => null),
+      ]);
+    } catch (backfillErr) {
+      console.warn("[pharmacySummary] backfill warning:", backfillErr.message);
+    }
     const [userCounts, branchCount, medCounts, requestCounts] =
       await Promise.all([
         User.aggregate([
