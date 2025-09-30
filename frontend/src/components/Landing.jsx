@@ -80,11 +80,6 @@ const Landing = () => {
       <main className="flex-1 flex items-center px-6 py-12">
         <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-16 items-center">
           <div className="space-y-8">
-            <div className="inline-flex items-center gap-2 px-4 py-2 bg-primary/10 text-primary rounded-full text-sm font-medium">
-              <Shield className="w-4 h-4" />
-              Trusted by 500+ pharmacies
-            </div>
-
             <h1 className="text-5xl sm:text-6xl font-black leading-tight text-slate-900">
               Simple pharmacy <span className="text-primary">inventory</span> &{" "}
               <span className="text-secondary">branch request</span> management

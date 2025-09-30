@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
+import SuperAdminDashboard from "./SuperAdminDashboard.jsx";
 import { useNavigate } from "react-router-dom";
 import {
   Package,
@@ -139,6 +140,11 @@ const AdminDashboard = () => {
   // metric card helper constants removed after refactor
   const baseTotal = stats.total + stats.deleted;
   const pct = (num, den) => (den > 0 ? Math.round((num / den) * 100) : 0);
+
+  // If super admin -> render dedicated dashboard
+  if (typeof window !== "undefined" && localStorage.getItem("role") === "super_admin") {
+    return <SuperAdminDashboard />;
+  }
 
   return (
     <div className="space-y-10">

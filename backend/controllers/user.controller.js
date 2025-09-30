@@ -66,7 +66,16 @@ export const deleteUser = async (req, res, next) => {
       return res
         .status(404)
         .json({ success: false, message: "User not found" });
-    if (user.role === "admin" && req.user.role !== "admin") {
+    // Prevent deletion of admins by non-admins and forbid deleting super admins here
+    if (user.role === "super_admin") {
+      return next(
+        errorHandler(403, "Cannot delete super admin via this route")
+      );
+    }
+    if (
+      user.role === "admin" &&
+      !["admin", "super_admin"].includes(req.user.role)
+    ) {
       return next(errorHandler(403, "Cannot delete admin"));
     }
     await User.deleteOne({ _id: user._id });

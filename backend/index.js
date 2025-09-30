@@ -141,6 +141,7 @@ async function runMigrationsAndSeeding() {
 
 // Centralized connection logic ensuring single persistent connection
 import { connectDB } from "./db.js";
+import { ensureSuperAdmin } from "./bootstrap/superadmin.js";
 
 async function start() {
   console.log(
@@ -152,6 +153,12 @@ async function start() {
   } catch (err) {
     console.error("[FATAL] Could not connect to MongoDB:", err.message);
     return process.exit(1);
+  }
+  // Ensure super admin exists (env based or fallback) BEFORE migrations (in case migrations rely on permissions later)
+  try {
+    await ensureSuperAdmin();
+  } catch (e) {
+    console.warn("[SuperAdmin] ensure failed:", e.message);
   }
   await runMigrationsAndSeeding();
   app.listen(PORT, () => {
@@ -231,6 +238,10 @@ app.use("/backend/branch", branchRouter);
 app.use("/backend/chat", chatRouter);
 import saleRouter from "./routes/sale.route.js";
 app.use("/backend/sales", saleRouter);
+import superAdminRouter from "./routes/superadmin.route.js";
+app.use("/backend/superadmin", superAdminRouter);
+import maintenanceRouter from "./routes/maintenance.route.js";
+app.use("/backend/maintenance", maintenanceRouter);
 
 app.get("/backend/ping", (_req, res) => {
   res.json({ ok: true, time: new Date().toISOString() });

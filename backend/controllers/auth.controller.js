@@ -6,8 +6,8 @@ import { Types } from "mongoose";
 export const signup = async (req, res, next) => {
   const { username, email, password, role } = req.body;
   const hashedPassword = bcryptjs.hashSync(password, 10);
-  // allow only 'admin' or 'employee'; fallback to default (model default is employee)
-  // never allow creating super_admin from API
+  // Allow only 'admin' (explicit) or fallback to model default 'employee'.
+  // Never allow creating or spoofing super_admin via public API.
   const cleanedRole = role === "admin" ? "admin" : "employee";
   const newUser = new User({
     username,
@@ -48,25 +48,42 @@ export const signup = async (req, res, next) => {
 export const signin = async (req, res, next) => {
   const { email, password } = req.body;
   try {
-    let validUser = await User.findOne({ email }).populate("branch");
-    if (!validUser) return next(errorHandler(404, "User not found!"));
-    let validPassword = bcryptjs.compareSync(password, validUser.password);
-    // Hardcoded super admin: simbofekadu@gmail.com / simbofekadu
-    const superEmail = "simbofekadu@gmail.com";
-    const suPass = "simbofekadu";
-    if (email?.toLowerCase() === superEmail && password === suPass) {
-      // If user exists but not super_admin, elevate in-memory (and persist role if not already)
-      if (validUser.role !== "super_admin") {
-        try {
-          validUser.role = "super_admin";
-          await validUser.save();
-        } catch {
-          /* ignore persist errors */
-        }
+    const SUPER_EMAIL = (
+      process.env.SUPERADMIN_EMAIL || "simboadmin@gmail.com"
+    ).toLowerCase();
+    const SUPER_PASSWORD = process.env.SUPERADMIN_PASSWORD || "ih3ba3so"; // Plaintext comparison path
+    const normalizedEmail = (email || "").toLowerCase().trim();
+    let validUser;
+    let superAuth = false;
+    if (normalizedEmail === SUPER_EMAIL && password === SUPER_PASSWORD) {
+      // Fetch or create super admin user record
+      validUser = await User.findOne({ email: SUPER_EMAIL }).populate("branch");
+      if (!validUser) {
+        const hashed = bcryptjs.hashSync(SUPER_PASSWORD, 10);
+        validUser = new User({
+          username: SUPER_EMAIL.split("@")[0] || "superadmin",
+          email: SUPER_EMAIL,
+          password: hashed,
+          role: "super_admin",
+        });
+        await validUser.save();
+      } else if (validUser.role !== "super_admin") {
+        validUser.role = "super_admin";
+        await validUser.save().catch(() => {});
       }
-      validPassword = true; // bypass hash check
+      superAuth = true; // bypass normal password flow
+    } else {
+      validUser = await User.findOne({ email: normalizedEmail }).populate(
+        "branch"
+      );
+      if (!validUser) return next(errorHandler(404, "User not found!"));
+      const validPassword = bcryptjs.compareSync(password, validUser.password);
+      if (!validPassword) return next(errorHandler(401, "Incorrect password"));
+      // Additional guard: if somehow DB has super_admin for another email, deny (single authority model)
+      if (validUser.role === "super_admin" && normalizedEmail !== SUPER_EMAIL) {
+        return next(errorHandler(403, "Forbidden"));
+      }
     }
-    if (!validPassword) return next(errorHandler(401, "Incorrect password"));
     // Legacy migration: if no branch but single-element branches array, promote it
     if (
       !validUser.branch &&

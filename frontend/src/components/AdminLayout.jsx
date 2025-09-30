@@ -64,7 +64,7 @@ const AdminLayout = () => {
     const token = localStorage.getItem("token");
     if (!token) navigate("/signin");
     const role = localStorage.getItem("role");
-    if (role && role !== "admin") {
+    if (role && !["admin", "super_admin"].includes(role)) {
       navigate("/employee");
     }
   }, [navigate]);
@@ -107,7 +107,15 @@ const AdminLayout = () => {
           borderRight: "1px solid var(--sidebar-border)",
         }}
       >
-        <div className="text-xl font-bold tracking-wide">Admin Panel</div>
+        <div className="text-xl font-bold tracking-wide flex items-center gap-2">
+          Admin Panel
+          {typeof window !== "undefined" &&
+            localStorage.getItem("role") === "super_admin" && (
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-600 text-white uppercase tracking-wider">
+                Super
+              </span>
+            )}
+        </div>
         <nav className="flex flex-col gap-1 text-sm">
           {links.map((l) => (
             <button
