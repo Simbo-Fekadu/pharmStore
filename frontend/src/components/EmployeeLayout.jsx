@@ -7,6 +7,7 @@ import { Menu, X, Sun, Moon, LogOut, Plus } from "lucide-react";
 const empLinks = [
   { to: "/employee", label: "Dashboard" },
   { to: "/employee/medicines", label: "Medicines" },
+  { to: "/employee/medicines/add", label: "Add Medicine" },
   { to: "/employee/branch-medicines", label: "Branch Medicines" },
   { to: "/employee/add-stock", label: "Add Stock" },
   { to: "/employee/requests", label: "Requests" },
@@ -55,6 +56,7 @@ const EmployeeLayout = () => {
     if (!p) return "Employee";
     if (p === "/employee" || p === "/employee/") return "Dashboard";
     if (p.startsWith("/employee/medicines")) return "Medicines";
+  if (p.startsWith("/employee/medicines/add")) return "Add Medicine";
     if (p.startsWith("/employee/requests")) return "Requests";
     if (p.startsWith("/employee/branch-medicines")) return "Branch Medicines";
     if (p.startsWith("/employee/add-stock")) return "Add Stock";
