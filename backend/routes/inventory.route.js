@@ -25,6 +25,7 @@ import {
   getLedgerHistory,
   directTransfer,
   backfillMedicineQuantities,
+  employeeAddBranchMedicine,
 } from "../controllers/inventory.controller.js";
 
 const router = express.Router();
@@ -89,6 +90,12 @@ router.post(
   verifyToken,
   requireInventoryAccess,
   backfillMedicineQuantities
+);
+// Employee self-service add medicine to their branch stock
+router.post(
+  "/branch/add-self",
+  verifyToken,
+  employeeAddBranchMedicine
 );
 // One-off migration endpoint (secured): create ledger entries from legacy Inventory transfers
 

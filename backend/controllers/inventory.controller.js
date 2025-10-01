@@ -1047,3 +1047,60 @@ export const clearBranchMedicines = async (req, res, next) => {
     next(e);
   }
 };
+
+// Employee self-service add medicine to their branch (creates synthetic transfer)
+import Store from "../models/store.model.js";
+import Medicine from "../models/medicine.model.js";
+export const employeeAddBranchMedicine = async (req, res) => {
+  try {
+    const user = req.user;
+    if (!user || !user.branch) {
+      return res.status(403).json({ success: false, message: "Branch context required" });
+    }
+    if (!['employee','inventory_manager'].includes(user.role)) {
+      return res.status(403).json({ success: false, message: "Only employees can add branch medicines" });
+    }
+    const { medicineId, quantity } = req.body;
+    if (!medicineId || !quantity || Number(quantity) <= 0) {
+      return res.status(400).json({ success: false, message: "medicineId and positive quantity required" });
+    }
+    const med = await Medicine.findById(medicineId);
+    if (!med || med.isDeleted) {
+      return res.status(404).json({ success: false, message: "Medicine not found" });
+    }
+    const central = await Store.findOne();
+    if (!central) {
+      return res.status(500).json({ success: false, message: "Central store missing" });
+    }
+    const qty = Math.abs(Number(quantity));
+    // Create transfer out (store)
+    const outLedger = await StockLedger.create({
+      medicineId,
+      locationId: central._id,
+      quantity: -qty,
+      transactionType: 'TRANSFER_OUT',
+      createdByUserId: user.id,
+    });
+    await StockBalance.updateOne(
+      { medicineId, locationId: central._id },
+      { $inc: { onHandQty: -qty }, $set: { lastTxnAt: new Date(), lastTxnId: outLedger._id } },
+      { upsert: true }
+    );
+    // Create transfer in (branch)
+    const inLedger = await StockLedger.create({
+      medicineId,
+      locationId: user.branch,
+      quantity: qty,
+      transactionType: 'TRANSFER_IN',
+      createdByUserId: user.id,
+    });
+    await StockBalance.updateOne(
+      { medicineId, locationId: user.branch },
+      { $inc: { onHandQty: qty }, $set: { lastTxnAt: new Date(), lastTxnId: inLedger._id } },
+      { upsert: true }
+    );
+    return res.status(201).json({ success: true, message: 'Branch medicine added', transferOut: outLedger._id, transferIn: inLedger._id });
+  } catch (e) {
+    return res.status(400).json({ success: false, message: e.message });
+  }
+};
