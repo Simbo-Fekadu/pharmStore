@@ -8,6 +8,7 @@ const empLinks = [
   { to: "/employee", label: "Dashboard" },
   { to: "/employee/medicines", label: "Medicines" },
   { to: "/employee/branch-medicines", label: "Branch Medicines" },
+  { to: "/employee/add-stock", label: "Add Stock" },
   { to: "/employee/requests", label: "Requests" },
   { to: "/employee/fulfillment", label: "Fulfillment" },
   { to: "/employee/sales", label: "Sales" },
@@ -56,6 +57,7 @@ const EmployeeLayout = () => {
     if (p.startsWith("/employee/medicines")) return "Medicines";
     if (p.startsWith("/employee/requests")) return "Requests";
     if (p.startsWith("/employee/branch-medicines")) return "Branch Medicines";
+  if (p.startsWith("/employee/add-stock")) return "Add Stock";
     if (p.startsWith("/employee/fulfillment")) return "Fulfillment";
     if (p === "/employee/sales" || p === "/employee/sales/") return "Sales";
     if (p.startsWith("/employee/sales/history")) return "Sales History";

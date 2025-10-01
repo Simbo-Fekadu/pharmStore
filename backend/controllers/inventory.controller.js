@@ -1051,39 +1051,70 @@ export const clearBranchMedicines = async (req, res, next) => {
 // Employee self-service add medicine to their branch (creates synthetic transfer)
 import Store from "../models/store.model.js";
 import Medicine from "../models/medicine.model.js";
+
+function logSyntheticTransfer(action, userId, meta = {}) {
+  try {
+    console.log(`[BranchTransfer] action=${action} user=${userId} meta=${JSON.stringify(meta)}`);
+  } catch {}
+}
 export const employeeAddBranchMedicine = async (req, res) => {
   try {
     const user = req.user;
     if (!user || !user.branch) {
-      return res.status(403).json({ success: false, message: "Branch context required" });
+      return res
+        .status(403)
+        .json({ success: false, message: "Branch context required" });
     }
-    if (!['employee','inventory_manager'].includes(user.role)) {
-      return res.status(403).json({ success: false, message: "Only employees can add branch medicines" });
+    if (!["employee", "inventory_manager"].includes(user.role)) {
+      return res
+        .status(403)
+        .json({
+          success: false,
+          message: "Only employees can add branch medicines",
+        });
     }
-    const { medicineId, quantity } = req.body;
+  const { medicineId, quantity, reason } = req.body;
     if (!medicineId || !quantity || Number(quantity) <= 0) {
-      return res.status(400).json({ success: false, message: "medicineId and positive quantity required" });
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "medicineId and positive quantity required",
+        });
     }
     const med = await Medicine.findById(medicineId);
     if (!med || med.isDeleted) {
-      return res.status(404).json({ success: false, message: "Medicine not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Medicine not found" });
     }
     const central = await Store.findOne();
     if (!central) {
-      return res.status(500).json({ success: false, message: "Central store missing" });
+      return res
+        .status(500)
+        .json({ success: false, message: "Central store missing" });
     }
     const qty = Math.abs(Number(quantity));
+    // Strict central stock enforcement
+    const centralBal = await StockBalance.findOne({ medicineId, locationId: central._id });
+    if (!centralBal || centralBal.onHandQty < qty) {
+      return res.status(400).json({ success: false, message: "Insufficient central store stock" });
+    }
     // Create transfer out (store)
     const outLedger = await StockLedger.create({
       medicineId,
       locationId: central._id,
       quantity: -qty,
-      transactionType: 'TRANSFER_OUT',
+      transactionType: "TRANSFER_OUT",
       createdByUserId: user.id,
+      notes: reason || undefined,
     });
     await StockBalance.updateOne(
       { medicineId, locationId: central._id },
-      { $inc: { onHandQty: -qty }, $set: { lastTxnAt: new Date(), lastTxnId: outLedger._id } },
+      {
+        $inc: { onHandQty: -qty },
+        $set: { lastTxnAt: new Date(), lastTxnId: outLedger._id },
+      },
       { upsert: true }
     );
     // Create transfer in (branch)
@@ -1091,15 +1122,99 @@ export const employeeAddBranchMedicine = async (req, res) => {
       medicineId,
       locationId: user.branch,
       quantity: qty,
-      transactionType: 'TRANSFER_IN',
+      transactionType: "TRANSFER_IN",
       createdByUserId: user.id,
+      notes: reason || undefined,
     });
     await StockBalance.updateOne(
       { medicineId, locationId: user.branch },
-      { $inc: { onHandQty: qty }, $set: { lastTxnAt: new Date(), lastTxnId: inLedger._id } },
+      {
+        $inc: { onHandQty: qty },
+        $set: { lastTxnAt: new Date(), lastTxnId: inLedger._id },
+      },
       { upsert: true }
     );
-    return res.status(201).json({ success: true, message: 'Branch medicine added', transferOut: outLedger._id, transferIn: inLedger._id });
+    logSyntheticTransfer('single_transfer', user.id, { medicineId, qty, branch: user.branch, out: outLedger._id, in: inLedger._id });
+    return res.status(201).json({
+      success: true,
+      message: "Branch medicine added",
+      transferOut: outLedger._id,
+      transferIn: inLedger._id,
+    });
+  } catch (e) {
+    return res.status(400).json({ success: false, message: e.message });
+  }
+};
+
+// Batch variant: body.items = [{ medicineId, quantity, reason? }, ...]
+export const employeeAddBranchMedicinesBatch = async (req, res) => {
+  try {
+    const user = req.user;
+    if (!user || !user.branch) {
+      return res.status(403).json({ success: false, message: "Branch context required" });
+    }
+    if (!['employee','inventory_manager'].includes(user.role)) {
+      return res.status(403).json({ success: false, message: 'Only employees can add branch medicines' });
+    }
+    const { items } = req.body;
+    if (!Array.isArray(items) || !items.length) {
+      return res.status(400).json({ success: false, message: 'items array required' });
+    }
+    const central = await Store.findOne();
+    if (!central) return res.status(500).json({ success: false, message: 'Central store missing' });
+    const results = [];
+    for (const entry of items) {
+      try {
+        const { medicineId, quantity, reason } = entry || {};
+        if (!medicineId || !quantity || Number(quantity) <= 0) {
+          results.push({ medicineId, success: false, error: 'Invalid medicineId/quantity' });
+          continue;
+        }
+        const med = await Medicine.findById(medicineId);
+        if (!med || med.isDeleted) {
+          results.push({ medicineId, success: false, error: 'Medicine not found' });
+          continue;
+        }
+        const qty = Math.abs(Number(quantity));
+        const centralBal = await StockBalance.findOne({ medicineId, locationId: central._id });
+        if (!centralBal || centralBal.onHandQty < qty) {
+          results.push({ medicineId, success: false, error: 'Insufficient central stock' });
+          continue;
+        }
+        const outLedger = await StockLedger.create({
+          medicineId,
+          locationId: central._id,
+          quantity: -qty,
+          transactionType: 'TRANSFER_OUT',
+          createdByUserId: user.id,
+          notes: reason || undefined,
+        });
+        await StockBalance.updateOne(
+          { medicineId, locationId: central._id },
+          { $inc: { onHandQty: -qty }, $set: { lastTxnAt: new Date(), lastTxnId: outLedger._id } },
+          { upsert: true }
+        );
+        const inLedger = await StockLedger.create({
+          medicineId,
+          locationId: user.branch,
+          quantity: qty,
+          transactionType: 'TRANSFER_IN',
+          createdByUserId: user.id,
+          notes: reason || undefined,
+        });
+        await StockBalance.updateOne(
+          { medicineId, locationId: user.branch },
+          { $inc: { onHandQty: qty }, $set: { lastTxnAt: new Date(), lastTxnId: inLedger._id } },
+          { upsert: true }
+        );
+        results.push({ medicineId, success: true, transferOut: outLedger._id, transferIn: inLedger._id });
+        logSyntheticTransfer('batch_transfer_item', user.id, { medicineId, qty, out: outLedger._id, in: inLedger._id });
+      } catch (innerErr) {
+        results.push({ medicineId: entry?.medicineId, success: false, error: innerErr.message });
+      }
+    }
+    logSyntheticTransfer('batch_transfer_complete', user.id, { count: results.length });
+    return res.status(207).json({ success: true, results });
   } catch (e) {
     return res.status(400).json({ success: false, message: e.message });
   }

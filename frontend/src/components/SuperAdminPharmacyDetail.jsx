@@ -463,7 +463,8 @@ export default function SuperAdminPharmacyDetail() {
                   b.address || "—",
                   new Date(b.createdAt).toLocaleDateString(),
                 ],
-                onClick: () => navigate(`/admin/pharmacies/${id}/branches/${b._id}`),
+                onClick: () =>
+                  navigate(`/admin/pharmacies/${id}/branches/${b._id}`),
               }))}
             />
           )}
@@ -596,15 +597,17 @@ function DrillList({ title, state, columns, rows }) {
             </thead>
             <tbody>
               {rows.map((r, i) => {
-                const isObj = r && typeof r === 'object' && !Array.isArray(r);
-                const key = isObj ? (r.key || i) : i;
+                const isObj = r && typeof r === "object" && !Array.isArray(r);
+                const key = isObj ? r.key || i : i;
                 const cells = isObj ? r.cells : r;
                 const onClick = isObj ? r.onClick : undefined;
                 return (
                   <tr
                     key={key}
                     onClick={onClick}
-                    className={`odd:bg-white/0 even:bg-white/[0.015] hover:bg-white/10 transition ${onClick ? 'cursor-pointer' : ''}`}
+                    className={`odd:bg-white/0 even:bg-white/[0.015] hover:bg-white/10 transition ${
+                      onClick ? "cursor-pointer" : ""
+                    }`}
                   >
                     {cells.map((cell, j) => (
                       <td key={j} className="px-3 py-2 whitespace-nowrap">

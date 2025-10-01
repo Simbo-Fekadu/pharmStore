@@ -69,7 +69,9 @@ async function buildDataset(type, scope, query) {
       const ids = branches.map((b) => b._id);
       if (branchFilter.locationId) {
         // ensure selected branch is within pharmacy scope
-        if (!ids.map((x) => String(x)).includes(String(branchFilter.locationId))) {
+        if (
+          !ids.map((x) => String(x)).includes(String(branchFilter.locationId))
+        ) {
           return { columns: [], rows: [] };
         }
       } else {
@@ -142,7 +144,7 @@ async function buildDataset(type, scope, query) {
 
 export const exportData = async (req, res) => {
   try {
-  const { type, format, preview } = req.query;
+    const { type, format, preview } = req.query;
     if (!type)
       return res.status(400).json({ success: false, message: "type required" });
     const allowedTypes = [
@@ -157,7 +159,7 @@ export const exportData = async (req, res) => {
     if (req.user && req.user.role !== "super_admin" && req.user.pharmacy) {
       scope.pharmacy = req.user.pharmacy;
     }
-  const { columns, rows } = await buildDataset(type, scope, req.query);
+    const { columns, rows } = await buildDataset(type, scope, req.query);
     if (preview) {
       return res.json({ success: true, columns, rows: rows.slice(0, 100) });
     }

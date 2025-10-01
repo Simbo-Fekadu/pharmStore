@@ -764,7 +764,10 @@ export const pharmacyBranchMedicines = async (req, res, next) => {
       .lean();
     if (!branch) return next(errorHandler(404, "Branch not found"));
     const balances = await StockBalance.find({ locationId: branchId })
-      .populate("medicineId", "medicineName category batchNumber expiryDate purchasePrice sellingPriceBase sellingPricePack")
+      .populate(
+        "medicineId",
+        "medicineName category batchNumber expiryDate purchasePrice sellingPriceBase sellingPricePack"
+      )
       .lean();
     const medicines = balances.map((b) => ({
       id: b.medicineId?._id,
@@ -777,7 +780,12 @@ export const pharmacyBranchMedicines = async (req, res, next) => {
       sellingPriceBase: b.medicineId?.sellingPriceBase,
       sellingPricePack: b.medicineId?.sellingPricePack,
     }));
-    res.json({ success: true, pharmacy: { id, name: pharmacy.name }, branch: { id: branchId, name: branch.name }, medicines });
+    res.json({
+      success: true,
+      pharmacy: { id, name: pharmacy.name },
+      branch: { id: branchId, name: branch.name },
+      medicines,
+    });
   } catch (e) {
     next(errorHandler(500, e.message));
   }

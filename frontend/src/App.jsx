@@ -25,6 +25,7 @@ import EmployeeLayout from "./components/EmployeeLayout";
 import EmployeeDashboard from "./components/EmployeeDashboard";
 import EmployeeMedicines from "./components/EmployeeMedicines";
 import BranchMedicines from "./components/BranchMedicines";
+import EmployeeAddStock from "./components/EmployeeAddStock";
 import EmployeeSales from "./components/EmployeeSales";
 import EmployeeSalesHistory from "./components/EmployeeSalesHistory";
 import Chat from "./components/Chat";
@@ -87,6 +88,7 @@ function App() {
               <Route index element={<EmployeeDashboard />} />
               <Route path="medicines" element={<EmployeeMedicines />} />
               <Route path="branch-medicines" element={<BranchMedicines />} />
+              <Route path="add-stock" element={<EmployeeAddStock />} />
               <Route path="requests" element={<BranchRequest />} />
               <Route path="chat" element={<Chat />} />
               <Route path="fulfillment" element={<Fulfillment />} />

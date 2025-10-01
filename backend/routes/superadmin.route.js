@@ -52,9 +52,6 @@ router.get(
   "/pharmacies/:id/branches/:branchId/medicines",
   pharmacyBranchMedicines
 );
-router.get(
-  "/pharmacies/:id/branches/:branchId/sales",
-  pharmacyBranchSales
-);
+router.get("/pharmacies/:id/branches/:branchId/sales", pharmacyBranchSales);
 
 export default router;

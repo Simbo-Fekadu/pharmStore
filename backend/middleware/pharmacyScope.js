@@ -18,13 +18,18 @@ export async function validatePharmacyIfSpecified(req, _res, next) {
     const exists = await Pharmacy.exists({ _id: req.pharmacyId });
     if (!exists) return next(errorHandler(404, "Pharmacy not found"));
     next();
-  } catch (e) { next(errorHandler(400, e.message)); }
+  } catch (e) {
+    next(errorHandler(400, e.message));
+  }
 }
 
 // Filter helper for controllers
 export function scopedFilter(base = {}) {
   return (req, _res, next) => {
-    req.scopedFilter = { ...base, ...(req.pharmacyId ? { pharmacy: req.pharmacyId } : {}) };
+    req.scopedFilter = {
+      ...base,
+      ...(req.pharmacyId ? { pharmacy: req.pharmacyId } : {}),
+    };
     next();
   };
 }

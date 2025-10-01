@@ -73,7 +73,10 @@ export async function ensureDefaultPharmacyAndBackfill() {
   ];
   try {
     const results = await Promise.all(filters);
-    const modifiedTotal = results.reduce((a, r) => a + (r.modifiedCount || 0), 0);
+    const modifiedTotal = results.reduce(
+      (a, r) => a + (r.modifiedCount || 0),
+      0
+    );
     if (modifiedTotal) {
       console.log(
         `[pharmacyBootstrap] Backfilled pharmacy reference on ${modifiedTotal} legacy docs`
