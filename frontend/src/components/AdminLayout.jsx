@@ -32,7 +32,6 @@ const adminLinks = [
 const superAdminExtra = [
   { to: "/admin", label: "Super Overview" },
   { to: "/admin", label: "Pharmacies", superMode: "pharmacies" },
-  { to: "/admin", label: "All Branches", superMode: "branches" },
   { to: "/admin/export", label: "Export Data" },
 ];
 

@@ -7,6 +7,7 @@ const DATASETS = [
   { key: "users", label: "Users" },
   { key: "medicines", label: "Medicines" },
   { key: "transactions", label: "Transactions" },
+  { key: "branch_medicines", label: "Branch Medicines" },
 ];
 const FORMATS = [
   { key: "xlsx", label: "Excel (.xlsx)" },
@@ -16,7 +17,12 @@ const FORMATS = [
 export default function ExportCenter() {
   const [dataset, setDataset] = useState("users");
   const [format, setFormat] = useState("xlsx");
-  const [preview, setPreview] = useState({ loading: false, columns: [], rows: [], error: null });
+  const [preview, setPreview] = useState({
+    loading: false,
+    columns: [],
+    rows: [],
+    error: null,
+  });
   const [downloading, setDownloading] = useState(false);
 
   const loadPreview = async () => {
@@ -25,8 +31,14 @@ export default function ExportCenter() {
       const url = `${API}/export/data?type=${dataset}&preview=1`;
       const res = await fetch(url, { credentials: "include" });
       const json = await res.json();
-      if (!res.ok || !json.success) throw new Error(json.message || "Preview failed");
-      setPreview({ loading: false, columns: json.columns, rows: json.rows, error: null });
+      if (!res.ok || !json.success)
+        throw new Error(json.message || "Preview failed");
+      setPreview({
+        loading: false,
+        columns: json.columns,
+        rows: json.rows,
+        error: null,
+      });
     } catch (e) {
       setPreview({ loading: false, columns: [], rows: [], error: e.message });
     }
@@ -40,11 +52,11 @@ export default function ExportCenter() {
       if (!res.ok) {
         let msg = "Download failed";
         try {
-            const j = await res.json();
-            if (j?.message) msg = j.message;
-          } catch {
-            // ignore parse error
-          }
+          const j = await res.json();
+          if (j?.message) msg = j.message;
+        } catch {
+          // ignore parse error
+        }
         throw new Error(msg);
       }
       const blob = await res.blob();
@@ -66,7 +78,8 @@ export default function ExportCenter() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Data Export</h1>
         <p className="text-sm text-white/60 mt-1">
-          Select a dataset and format, preview up to 100 rows, then export to Excel or PDF.
+          Select a dataset and format, preview up to 100 rows, then export to
+          Excel or PDF.
         </p>
       </div>
       <div className="flex flex-wrap gap-6 items-end">
@@ -156,9 +169,13 @@ export default function ExportCenter() {
           </table>
         </div>
       )}
-      {preview.loading && <div className="text-sm text-white/60">Loading preview...</div>}
+      {preview.loading && (
+        <div className="text-sm text-white/60">Loading preview...</div>
+      )}
       {!preview.loading && preview.rows.length === 0 && !preview.error && (
-        <div className="text-sm text-white/50">No preview yet. Click Preview.</div>
+        <div className="text-sm text-white/50">
+          No preview yet. Click Preview.
+        </div>
       )}
     </div>
   );
