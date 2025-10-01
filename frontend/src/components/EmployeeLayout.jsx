@@ -1,7 +1,7 @@
 import { useNavigate, Outlet, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { useTheme } from "./useTheme.js";
-import { Menu, X, Sun, Moon, LogOut } from "lucide-react";
+import { Menu, X, Sun, Moon, LogOut, Plus } from "lucide-react";
 
 // Clone of AdminLayout styling (no price metrics handled in EmployeeDashboard) with limited links
 const empLinks = [
@@ -57,7 +57,7 @@ const EmployeeLayout = () => {
     if (p.startsWith("/employee/medicines")) return "Medicines";
     if (p.startsWith("/employee/requests")) return "Requests";
     if (p.startsWith("/employee/branch-medicines")) return "Branch Medicines";
-  if (p.startsWith("/employee/add-stock")) return "Add Stock";
+    if (p.startsWith("/employee/add-stock")) return "Add Stock";
     if (p.startsWith("/employee/fulfillment")) return "Fulfillment";
     if (p === "/employee/sales" || p === "/employee/sales/") return "Sales";
     if (p.startsWith("/employee/sales/history")) return "Sales History";
@@ -107,8 +107,18 @@ const EmployeeLayout = () => {
       </aside>
       {/* Top navbar */}
       <div className="fixed top-0 left-0 right-0 z-30 bg-[var(--bg-start)]/90 backdrop-blur-sm border-b border-border px-4 py-3 flex items-center justify-between text-foreground">
-        <div className="font-semibold text-foreground truncate">
-          {pageTitle}
+        <div className="flex items-center gap-3">
+          <div className="font-semibold text-foreground truncate">
+            {pageTitle}
+          </div>
+          {pathname !== "/employee/add-stock" && (
+            <button
+              onClick={() => navigate("/employee/add-stock")}
+              className="hidden md:inline-flex items-center gap-1 px-3 py-1.5 rounded bg-[var(--brand)] hover:bg-[var(--brand-hover)] text-white text-xs font-medium shadow-sm"
+            >
+              <Plus className="w-4 h-4" /> Add Stock
+            </button>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <button
