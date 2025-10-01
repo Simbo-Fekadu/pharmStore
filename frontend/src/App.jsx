@@ -31,6 +31,7 @@ import Chat from "./components/Chat";
 import ToastProvider from "./components/ToastProvider";
 import ConfirmProvider from "./components/ConfirmProvider";
 import SuperAdminPharmacyDetail from "./components/SuperAdminPharmacyDetail";
+import SuperAdminBranchDetail from "./components/SuperAdminBranchDetail";
 import ExportCenter from "./components/ExportCenter";
 
 function App() {
@@ -75,6 +76,10 @@ function App() {
               <Route
                 path="pharmacies/:id"
                 element={<SuperAdminPharmacyDetail />}
+              />
+              <Route
+                path="pharmacies/:id/branches/:branchId"
+                element={<SuperAdminBranchDetail />}
               />
               <Route path="export" element={<ExportCenter />} />
             </Route>

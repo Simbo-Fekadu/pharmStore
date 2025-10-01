@@ -456,11 +456,15 @@ export default function SuperAdminPharmacyDetail() {
               title="Branches"
               state={branchesData}
               columns={["Name", "Address", "Created"]}
-              rows={branchesData.items.map((b) => [
-                b.name,
-                b.address || "—",
-                new Date(b.createdAt).toLocaleDateString(),
-              ])}
+              rows={branchesData.items.map((b) => ({
+                key: b._id,
+                cells: [
+                  b.name,
+                  b.address || "—",
+                  new Date(b.createdAt).toLocaleDateString(),
+                ],
+                onClick: () => navigate(`/admin/pharmacies/${id}/branches/${b._id}`),
+              }))}
             />
           )}
           {activeTab === "medicines" && (
@@ -503,14 +507,7 @@ export default function SuperAdminPharmacyDetail() {
             <DrillList
               title="Transactions"
               state={transactionsData}
-              columns={[
-                "Date",
-                "Branch",
-                "Medicine",
-                "Qty",
-                "Type",
-                "Status",
-              ]}
+              columns={["Date", "Branch", "Medicine", "Qty", "Type", "Status"]}
               rows={transactionsData.items.map((t) => [
                 new Date(t.createdAt).toLocaleString(),
                 t.branch,
@@ -598,18 +595,25 @@ function DrillList({ title, state, columns, rows }) {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r, i) => (
-                <tr
-                  key={i}
-                  className="odd:bg-white/0 even:bg-white/[0.015] hover:bg-white/10 transition"
-                >
-                  {r.map((cell, j) => (
-                    <td key={j} className="px-3 py-2 whitespace-nowrap">
-                      {cell}
-                    </td>
-                  ))}
-                </tr>
-              ))}
+              {rows.map((r, i) => {
+                const isObj = r && typeof r === 'object' && !Array.isArray(r);
+                const key = isObj ? (r.key || i) : i;
+                const cells = isObj ? r.cells : r;
+                const onClick = isObj ? r.onClick : undefined;
+                return (
+                  <tr
+                    key={key}
+                    onClick={onClick}
+                    className={`odd:bg-white/0 even:bg-white/[0.015] hover:bg-white/10 transition ${onClick ? 'cursor-pointer' : ''}`}
+                  >
+                    {cells.map((cell, j) => (
+                      <td key={j} className="px-3 py-2 whitespace-nowrap">
+                        {cell}
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

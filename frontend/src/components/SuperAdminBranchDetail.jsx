@@ -1,0 +1,125 @@
+import { useEffect, useState } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { getApiBase } from "../api/base";
+
+const API = getApiBase() + "/backend";
+
+export default function SuperAdminBranchDetail() {
+  const { id, branchId } = useParams(); // pharmacy id, branch id
+  const navigate = useNavigate();
+  const [tab, setTab] = useState("medicines");
+  const [branchInfo, setBranchInfo] = useState(null); // {pharmacy, branch}
+  const [meds, setMeds] = useState({ loading: false, error: null, rows: [] });
+  const [sales, setSales] = useState({ loading: false, error: null, rows: [], meta: null });
+  const [salesDate, setSalesDate] = useState(() => new Date().toISOString().slice(0,10));
+
+  // Load medicines when tab=medicines
+  useEffect(() => {
+    if (tab !== "medicines" || meds.loading || meds.rows.length) return;
+    (async () => {
+      setMeds((s) => ({ ...s, loading: true, error: null }));
+      try {
+        const res = await fetch(`${API}/superadmin/pharmacies/${id}/branches/${branchId}/medicines`, { credentials: "include" });
+        const json = await res.json();
+        if (!res.ok || !json.success) throw new Error(json.message || "Load failed");
+        setBranchInfo({ pharmacy: json.pharmacy, branch: json.branch });
+        setMeds({ loading: false, error: null, rows: json.medicines || [] });
+      } catch (e) {
+        setMeds({ loading: false, error: e.message, rows: [] });
+      }
+    })();
+  }, [tab, meds.loading, meds.rows.length, id, branchId]);
+
+  // Load sales when tab=sales or date changes
+  useEffect(() => {
+    if (tab !== "sales") return;
+    (async () => {
+      setSales((s) => ({ ...s, loading: true, error: null }));
+      try {
+        const res = await fetch(`${API}/superadmin/pharmacies/${id}/branches/${branchId}/sales?date=${salesDate}`, { credentials: "include" });
+        const json = await res.json();
+        if (!res.ok || !json.success) throw new Error(json.message || "Load failed");
+        setBranchInfo({ pharmacy: json.pharmacy, branch: json.branch });
+        setSales({ loading: false, error: null, rows: json.sales || [], meta: { totalAmount: json.totalAmount, totalTransactions: json.totalTransactions, date: json.date } });
+      } catch (e) {
+        setSales({ loading: false, error: e.message, rows: [], meta: null });
+      }
+    })();
+  }, [tab, salesDate, id, branchId]);
+
+  const crumbsPharmacyName = branchInfo?.pharmacy?.name || "Pharmacy";
+  const branchName = branchInfo?.branch?.name || "Branch";
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-2 text-sm text-white/50 flex-wrap">
+        <button onClick={() => navigate('/admin')} className="hover:text-white">Admin</button>
+        <span>/</span>
+        <button onClick={() => navigate('/admin')} className="hover:text-white">Pharmacies</button>
+        <span>/</span>
+        <button onClick={() => navigate(`/admin/pharmacies/${id}`)} className="hover:text-white">{crumbsPharmacyName}</button>
+        <span>/</span>
+        <span className="text-white/80">{branchName}</span>
+      </div>
+      <div className="flex items-center gap-2 text-sm flex-wrap">
+        <Tab active={tab==='medicines'} onClick={()=>setTab('medicines')}>Medicines</Tab>
+        <Tab active={tab==='sales'} onClick={()=>setTab('sales')}>Sales</Tab>
+      </div>
+      {tab === 'medicines' && (
+        <Section title="Branch Medicines" state={meds} columns={["Name","Category","Batch","Expiry","Qty"]} rows={meds.rows.map(m => [m.name, m.category, m.batch ? m.batch : '', m.expiry ? new Date(m.expiry).toLocaleDateString() : '', m.qty])} />
+      )}
+      {tab === 'sales' && (
+        <div className="space-y-4">
+          <div className="flex items-end gap-4 flex-wrap">
+            <div className="flex flex-col gap-1">
+              <label className="text-[11px] uppercase font-semibold text-white/50">Date</label>
+              <input type="date" value={salesDate} onChange={e=>setSalesDate(e.target.value)} className="px-2 py-1 rounded bg-white/10 border border-white/20 text-sm" />
+            </div>
+            {sales.meta && (
+              <div className="text-xs text-white/70 flex gap-6">
+                <div><span className="text-white/40">Transactions:</span> {sales.meta.totalTransactions}</div>
+                <div><span className="text-white/40">Total Amount:</span> {sales.meta.totalAmount}</div>
+              </div>
+            )}
+          </div>
+          <Section title="Sales" state={sales} columns={["Time","Medicine","Qty","Price","Employee"]} rows={sales.rows.map(s => [new Date(s.createdAt).toLocaleTimeString(), s.medicineName, s.quantity, s.price, s.employeeName])} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Tab({ active, onClick, children }) {
+  return (
+    <button onClick={onClick} className={`px-3 py-1.5 rounded border text-xs font-medium tracking-wide transition ${active ? 'bg-[var(--brand)] text-white border-[var(--brand)]' : 'bg-white/10 border-white/10 hover:bg-white/20'}`}>{children}</button>
+  );
+}
+
+function Section({ title, state, columns, rows }) {
+  return (
+    <div className="space-y-3">
+      <h2 className="text-lg font-semibold">{title}</h2>
+      {state.loading && <div className="text-sm text-white/60">Loading {title.toLowerCase()}...</div>}
+      {state.error && <div className="p-3 rounded bg-rose-500/15 border border-rose-500/30 text-sm text-rose-200">{state.error}</div>}
+      {!state.loading && !state.error && rows.length === 0 && <div className="text-sm text-white/50">No {title.toLowerCase()} found.</div>}
+      {rows.length > 0 && (
+        <div className="overflow-auto rounded-lg border border-white/10">
+          <table className="min-w-full text-sm">
+            <thead className="bg-white/5 text-white/60">
+              <tr>
+                {columns.map(c => <th key={c} className="text-left px-3 py-2 font-medium uppercase tracking-wide text-[11px]">{c}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r,i)=>(
+                <tr key={i} className="odd:bg-white/0 even:bg-white/[0.015] hover:bg-white/10 transition">
+                  {r.map((cell,j)=>(<td key={j} className="px-3 py-2 whitespace-nowrap">{cell}</td>))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}

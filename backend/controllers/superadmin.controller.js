@@ -579,7 +579,9 @@ export const pharmacySummary = async (req, res, next) => {
               .lean();
             const ids = branches.map((b) => b._id);
             if (!ids.length) return 0;
-            return await StockLedger.countDocuments({ locationId: { $in: ids } });
+            return await StockLedger.countDocuments({
+              locationId: { $in: ids },
+            });
           } catch {
             return 0;
           }
@@ -717,12 +719,14 @@ export const pharmacyTransactions = async (req, res, next) => {
     const { id } = req.params; // pharmacy id
     const pharmacy = await Pharmacy.findById(id).lean();
     if (!pharmacy) return next(errorHandler(404, "Pharmacy not found"));
-    const branches = await Branch.find({ pharmacy: id })
-      .select("_id")
-      .lean();
+    const branches = await Branch.find({ pharmacy: id }).select("_id").lean();
     const ids = branches.map((b) => b._id);
     if (!ids.length)
-      return res.json({ success: true, pharmacy: { id, name: pharmacy.name }, transactions: [] });
+      return res.json({
+        success: true,
+        pharmacy: { id, name: pharmacy.name },
+        transactions: [],
+      });
     const txns = await StockLedger.find({ locationId: { $in: ids } })
       .sort({ createdAt: -1 })
       .limit(500)
@@ -739,7 +743,93 @@ export const pharmacyTransactions = async (req, res, next) => {
       status: t.status,
       createdAt: t.createdAt,
     }));
-    res.json({ success: true, pharmacy: { id, name: pharmacy.name }, transactions });
+    res.json({
+      success: true,
+      pharmacy: { id, name: pharmacy.name },
+      transactions,
+    });
+  } catch (e) {
+    next(errorHandler(500, e.message));
+  }
+};
+
+// Branch-specific medicines under a pharmacy
+export const pharmacyBranchMedicines = async (req, res, next) => {
+  try {
+    const { id, branchId } = req.params; // pharmacy id, branch id
+    const pharmacy = await Pharmacy.findById(id).lean();
+    if (!pharmacy) return next(errorHandler(404, "Pharmacy not found"));
+    const branch = await Branch.findOne({ _id: branchId, pharmacy: id })
+      .select("name")
+      .lean();
+    if (!branch) return next(errorHandler(404, "Branch not found"));
+    const balances = await StockBalance.find({ locationId: branchId })
+      .populate("medicineId", "medicineName category batchNumber expiryDate purchasePrice sellingPriceBase sellingPricePack")
+      .lean();
+    const medicines = balances.map((b) => ({
+      id: b.medicineId?._id,
+      name: b.medicineId?.medicineName,
+      category: b.medicineId?.category,
+      batch: b.medicineId?.batchNumber,
+      expiry: b.medicineId?.expiryDate,
+      qty: b.onHandQty || 0,
+      purchasePrice: b.medicineId?.purchasePrice,
+      sellingPriceBase: b.medicineId?.sellingPriceBase,
+      sellingPricePack: b.medicineId?.sellingPricePack,
+    }));
+    res.json({ success: true, pharmacy: { id, name: pharmacy.name }, branch: { id: branchId, name: branch.name }, medicines });
+  } catch (e) {
+    next(errorHandler(500, e.message));
+  }
+};
+
+// Branch sales (summary by date or list) - simple implementation
+import Sale from "../models/sale.model.js";
+export const pharmacyBranchSales = async (req, res, next) => {
+  try {
+    const { id, branchId } = req.params; // pharmacy id, branch id
+    const { date } = req.query; // optional YYYY-MM-DD
+    const pharmacy = await Pharmacy.findById(id).lean();
+    if (!pharmacy) return next(errorHandler(404, "Pharmacy not found"));
+    const branch = await Branch.findOne({ _id: branchId, pharmacy: id })
+      .select("name")
+      .lean();
+    if (!branch) return next(errorHandler(404, "Branch not found"));
+    let startDate, endDate;
+    if (date) {
+      const parts = date.split("-").map((n) => Number(n));
+      if (parts.length === 3) {
+        const [y, m, d] = parts;
+        startDate = new Date(y, m - 1, d, 0, 0, 0, 0);
+        endDate = new Date(y, m - 1, d, 23, 59, 59, 999);
+      }
+    }
+    if (!startDate) {
+      startDate = new Date();
+      startDate.setHours(0, 0, 0, 0);
+      endDate = new Date();
+      endDate.setHours(23, 59, 59, 999);
+    }
+    const sales = await Sale.find({
+      branchId,
+      date: { $gte: startDate, $lte: endDate },
+    })
+      .select("medicineName quantity price employeeName date createdAt")
+      .sort({ createdAt: -1 })
+      .lean();
+    const totalAmount = sales.reduce(
+      (sum, s) => sum + s.quantity * (s.price || 0),
+      0
+    );
+    res.json({
+      success: true,
+      pharmacy: { id, name: pharmacy.name },
+      branch: { id: branchId, name: branch.name },
+      date: startDate.toISOString().slice(0, 10),
+      totalAmount,
+      totalTransactions: sales.length,
+      sales,
+    });
   } catch (e) {
     next(errorHandler(500, e.message));
   }

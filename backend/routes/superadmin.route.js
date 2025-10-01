@@ -21,6 +21,8 @@ import {
   pharmacyMedicines,
   pharmacyRequests,
   pharmacyTransactions,
+  pharmacyBranchMedicines,
+  pharmacyBranchSales,
 } from "../controllers/superadmin.controller.js";
 
 const router = express.Router();
@@ -46,5 +48,13 @@ router.get("/pharmacies/:id/branches", pharmacyBranches);
 router.get("/pharmacies/:id/medicines", pharmacyMedicines);
 router.get("/pharmacies/:id/requests", pharmacyRequests);
 router.get("/pharmacies/:id/transactions", pharmacyTransactions);
+router.get(
+  "/pharmacies/:id/branches/:branchId/medicines",
+  pharmacyBranchMedicines
+);
+router.get(
+  "/pharmacies/:id/branches/:branchId/sales",
+  pharmacyBranchSales
+);
 
 export default router;

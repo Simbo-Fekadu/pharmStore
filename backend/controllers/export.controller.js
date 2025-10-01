@@ -6,7 +6,7 @@ import xlsx from "xlsx";
 import PDFDocument from "pdfkit";
 
 // Helper: generate rows/columns based on type
-async function buildDataset(type, scope) {
+async function buildDataset(type, scope, query) {
   if (type === "users") {
     const q = scope?.pharmacy
       ? { pharmacy: scope.pharmacy, role: { $ne: "super_admin" } }
@@ -59,15 +59,28 @@ async function buildDataset(type, scope) {
   if (type === "branch_medicines") {
     // For each branch, list its on-hand stock (StockBalance) joined with medicine
     let branchFilter = {};
+    if (query?.branchId) {
+      branchFilter.locationId = query.branchId;
+    }
     if (scope?.pharmacy) {
       const branches = await Branch.find({ pharmacy: scope.pharmacy })
         .select("_id")
         .lean();
       const ids = branches.map((b) => b._id);
-      branchFilter = { locationId: { $in: ids } };
+      if (branchFilter.locationId) {
+        // ensure selected branch is within pharmacy scope
+        if (!ids.map((x) => String(x)).includes(String(branchFilter.locationId))) {
+          return { columns: [], rows: [] };
+        }
+      } else {
+        branchFilter.locationId = { $in: ids };
+      }
     }
     const balances = await StockBalance.find(branchFilter)
-      .populate("medicineId", "medicineName category batchNumber expiryDate purchasePrice sellingPriceBase sellingPricePack")
+      .populate(
+        "medicineId",
+        "medicineName category batchNumber expiryDate purchasePrice sellingPriceBase sellingPricePack"
+      )
       .populate("locationId", "name")
       .lean();
     const columns = [
@@ -129,7 +142,7 @@ async function buildDataset(type, scope) {
 
 export const exportData = async (req, res) => {
   try {
-    const { type, format, preview } = req.query;
+  const { type, format, preview } = req.query;
     if (!type)
       return res.status(400).json({ success: false, message: "type required" });
     const allowedTypes = [
@@ -144,7 +157,7 @@ export const exportData = async (req, res) => {
     if (req.user && req.user.role !== "super_admin" && req.user.pharmacy) {
       scope.pharmacy = req.user.pharmacy;
     }
-    const { columns, rows } = await buildDataset(type, scope);
+  const { columns, rows } = await buildDataset(type, scope, req.query);
     if (preview) {
       return res.json({ success: true, columns, rows: rows.slice(0, 100) });
     }
