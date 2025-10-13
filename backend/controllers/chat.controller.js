@@ -30,7 +30,9 @@ async function buildHandle(user) {
 export const listMessages = async (req, res) => {
   try {
     const { room = "global", limit = 200 } = req.query;
-    const msgs = await ChatMessage.find({ room })
+    const filter = { room };
+    if (req.pharmacyId) filter.pharmacy = req.pharmacyId;
+    const msgs = await ChatMessage.find(filter)
       .sort({ createdAt: -1 })
       .limit(Math.min(Number(limit) || 50, 500))
       .lean();
@@ -53,6 +55,7 @@ export const postMessage = async (req, res) => {
       text: text.trim().slice(0, 1000),
       senderId: user?._id,
       senderHandle,
+      pharmacy: req.pharmacyId || undefined,
     });
     res.status(201).json({ success: true, message: msg });
   } catch (e) {

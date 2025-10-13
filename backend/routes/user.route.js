@@ -8,6 +8,7 @@ import {
   listMyBranchEmployees,
 } from "../controllers/user.controller.js";
 import { verifyToken, requireAdmin } from "../utils/verifyUser.js";
+import { attachPharmacyContext } from "../middleware/pharmacyScope.js";
 
 const router = express.Router();
 
@@ -15,7 +16,7 @@ const router = express.Router();
 router.get("/team", verifyToken, listMyBranchEmployees);
 
 // Admin-only user management
-router.use(verifyToken, requireAdmin);
+router.use(verifyToken, requireAdmin, attachPharmacyContext);
 router.post("/", createEmployee); // create employee
 router.get("/", getUsers);
 router.get("/:id", getUser);

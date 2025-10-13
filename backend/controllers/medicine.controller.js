@@ -4,6 +4,7 @@ import Medicine from "../models/medicine.model.js";
 import User from "../models/user.model.js";
 import Supplier from "../models/supplier.model.js";
 import Store from "../models/store.model.js";
+import Branch from "../models/branch.model.js"; // added for branch direct stock
 import { StockLedger, StockBalance } from "../models/inventory.model.js";
 import Papa from "papaparse";
 import xlsx from "xlsx";
@@ -13,6 +14,8 @@ export const getMedicines = async (req, res) => {
   try {
     const { includeDeleted, withStock, storeOnly, centralNet } = req.query;
     const filter = includeDeleted === "true" ? {} : { isDeleted: false };
+    // Scope by pharmacy if provided/attached
+    if (req.pharmacyId) filter.pharmacy = req.pharmacyId;
     const medicines = await Medicine.find(filter).populate("supplier");
     if (withStock === "true" && medicines.length) {
       const ids = medicines.map((m) => m._id);
@@ -36,14 +39,20 @@ export const getMedicines = async (req, res) => {
       );
 
       if (centralNet === "true") {
-        const stores = await Store.find({}, "_id").lean();
-        const storeIdList = stores.map((s) => s._id);
-        if (storeIdList.length) {
+        // Include all locations (stores + branches) for total central net calculation
+        const allLocations = await Promise.all([
+          Store.find({}, "_id").lean(),
+          Branch.find({}, "_id").lean(),
+        ]);
+        const locationIdList = [...allLocations[0], ...allLocations[1]].map(
+          (loc) => loc._id
+        );
+        if (locationIdList.length) {
           const netAgg = await StockLedger.aggregate([
             {
               $match: {
                 medicineId: { $in: ids },
-                locationId: { $in: storeIdList },
+                locationId: { $in: locationIdList },
               },
             },
             { $group: { _id: "$medicineId", net: { $sum: "$quantity" } } },
@@ -58,14 +67,20 @@ export const getMedicines = async (req, res) => {
       }
 
       if (req.query.initialCurrent === "true") {
-        const stores = await Store.find({}, "_id").lean();
-        const storeIdList = stores.map((s) => s._id);
-        if (storeIdList.length) {
+        // Include all locations (stores + branches) for total remaining calculation
+        const allLocations = await Promise.all([
+          Store.find({}, "_id").lean(),
+          Branch.find({}, "_id").lean(),
+        ]);
+        const locationIdList = [...allLocations[0], ...allLocations[1]].map(
+          (loc) => loc._id
+        );
+        if (locationIdList.length) {
           const lifeAgg = await StockLedger.aggregate([
             {
               $match: {
                 medicineId: { $in: ids },
-                locationId: { $in: storeIdList },
+                locationId: { $in: locationIdList },
               },
             },
             {
@@ -167,6 +182,9 @@ export const getMedicines = async (req, res) => {
 // Create or reuse medicine and optionally record initial GRN
 export const createMedicine = async (req, res) => {
   try {
+    // Track where initial stock was added (for response)
+    let addedToLocationId = null;
+    let addedToLocationIsBranch = false;
     let createdBy = req.body.createdBy;
     const headerToken =
       req.cookies?.access_token || req.headers.authorization?.split(" ")[1];
@@ -175,11 +193,40 @@ export const createMedicine = async (req, res) => {
         const decoded = jwt.verify(headerToken, process.env.SECRET);
         const user = await User.findById(decoded.id);
         if (user) createdBy = user.username;
+        // Attach decoded user to request-local variable for later branch logic
+        req._authUser = user;
       } catch {
         /* ignore */
       }
     }
     const body = { ...req.body, createdBy };
+    if (req.pharmacyId) body.pharmacy = req.pharmacyId;
+    // Basic required field validation before hitting Mongoose so we can return clearer messages
+    const problems = [];
+    if (
+      !body.medicineName ||
+      typeof body.medicineName !== "string" ||
+      !body.medicineName.trim()
+    ) {
+      problems.push("medicineName is required");
+    }
+    if (body.purchasePrice == null || isNaN(Number(body.purchasePrice))) {
+      problems.push("purchasePrice must be a number");
+    }
+    if (!body.expiryDate) {
+      problems.push("expiryDate is required");
+    } else if (isNaN(new Date(body.expiryDate).getTime())) {
+      problems.push("expiryDate is invalid");
+    }
+    if (problems.length) {
+      return res
+        .status(400)
+        .json({ success: false, message: problems.join(", ") });
+    }
+    // If a client provided a non-ObjectId _id (e.g. ULID from offline cache) drop it so Mongo can generate one
+    if (body._id && !mongoose.Types.ObjectId.isValid(body._id)) {
+      delete body._id;
+    }
     if (typeof body.supplier === "string") {
       const trimmed = body.supplier.trim();
       if (!trimmed) delete body.supplier;
@@ -223,16 +270,43 @@ export const createMedicine = async (req, res) => {
       isDeleted: false,
     };
     Object.keys(match).forEach((k) => match[k] === null && delete match[k]);
+    // Match should also consider pharmacy if scoped
+    if (req.pharmacyId) match.pharmacy = req.pharmacyId;
     let medicine = await Medicine.findOne(match);
     if (!medicine) {
       medicine = new Medicine(body);
       await medicine.save();
     }
     if (body.quantity && Number(body.quantity) > 0) {
-      let central = null;
-      if (req.body.storeId) central = await Store.findById(req.body.storeId);
-      if (!central) central = await Store.findOne();
-      if (central) {
+      // Determine target location: employee/inventory_manager -> their branch, else central store (optionally explicit branchId / storeId)
+      let locationDoc = null;
+      let isBranch = false;
+      const desiredBranchId = req.body.branchId; // allow admin to force branch add
+      if (desiredBranchId && mongoose.Types.ObjectId.isValid(desiredBranchId)) {
+        locationDoc = await Branch.findById(desiredBranchId);
+        if (locationDoc) isBranch = true;
+      }
+      if (!locationDoc && req._authUser && req._authUser.branch) {
+        locationDoc = await Branch.findById(req._authUser.branch);
+        if (locationDoc) isBranch = true;
+      }
+      // If user is an employee (not admin/inventory_manager) and no branch resolved, abort instead of falling back to central
+      if (!locationDoc && req._authUser && req._authUser.role === "employee") {
+        return res
+          .status(400)
+          .json({ success: false, message: "Employee has no branch assigned" });
+      }
+      // fallback to store
+      if (!locationDoc) {
+        if (
+          req.body.storeId &&
+          mongoose.Types.ObjectId.isValid(req.body.storeId)
+        ) {
+          locationDoc = await Store.findById(req.body.storeId);
+        }
+        if (!locationDoc) locationDoc = await Store.findOne();
+      }
+      if (locationDoc) {
         // Convert to base units if quantity was provided in packs
         let qty = Number(body.quantity);
         try {
@@ -246,27 +320,40 @@ export const createMedicine = async (req, res) => {
         }
         const ledger = await StockLedger.create({
           medicineId: medicine._id,
-          locationId: central._id,
+          locationId: locationDoc._id,
           quantity: qty,
-          transactionType: "GRN",
-          sourceDocType: "GRN",
+          transactionType: "GRN", // treat as goods receipt
+          sourceDocType: isBranch ? "DIRECT_BRANCH_STOCK" : "GRN",
           sourceDocId: req.body.sourceDocId || undefined,
           unitCost: body.purchasePrice,
           expiryDate: body.expiryDate,
+          createdByUserId: req._authUser?._id,
+          notes: isBranch ? "Direct branch stock addition" : undefined,
         });
         await StockBalance.updateOne(
-          { medicineId: medicine._id, locationId: central._id },
+          { medicineId: medicine._id, locationId: locationDoc._id },
           {
             $inc: { onHandQty: qty },
             $set: { lastTxnAt: new Date(), lastTxnId: ledger._id },
           },
           { upsert: true }
         );
+        // record for response
+        addedToLocationId = locationDoc._id;
+        addedToLocationIsBranch = isBranch === true;
       }
     }
-    res
-      .status(201)
-      .json({ success: true, message: "Medicine upserted", medicine });
+    res.status(201).json({
+      success: true,
+      message: "Medicine upserted",
+      medicine,
+      stockLocation: addedToLocationId
+        ? {
+            type: addedToLocationIsBranch ? "Branch" : "Store",
+            id: addedToLocationId,
+          }
+        : null,
+    });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
   }
@@ -274,7 +361,9 @@ export const createMedicine = async (req, res) => {
 
 export const getMedicine = async (req, res) => {
   try {
-    const medicine = await Medicine.findById(req.params.id);
+    const q = { _id: req.params.id };
+    if (req.pharmacyId) q.pharmacy = req.pharmacyId;
+    const medicine = await Medicine.findOne(q);
     if (!medicine)
       return res
         .status(404)
@@ -322,7 +411,10 @@ export const updateMedicine = async (req, res) => {
         .status(400)
         .json({ success: false, message: "batchNumber cannot be empty" });
     }
-    const medicine = await Medicine.findByIdAndUpdate(req.params.id, update, {
+    // Restrict to same pharmacy when scoped
+    const q = { _id: req.params.id };
+    if (req.pharmacyId) q.pharmacy = req.pharmacyId;
+    const medicine = await Medicine.findOneAndUpdate(q, update, {
       new: true,
     }).populate("supplier");
     if (!medicine)
@@ -341,7 +433,9 @@ export const updateMedicine = async (req, res) => {
 
 export const deleteMedicine = async (req, res) => {
   try {
-    const medicine = await Medicine.findById(req.params.id);
+    const q = { _id: req.params.id };
+    if (req.pharmacyId) q.pharmacy = req.pharmacyId;
+    const medicine = await Medicine.findOne(q);
     if (!medicine)
       return res
         .status(404)
@@ -364,7 +458,9 @@ export const deleteMedicine = async (req, res) => {
 
 export const restoreMedicine = async (req, res) => {
   try {
-    const medicine = await Medicine.findById(req.params.id);
+    const q = { _id: req.params.id };
+    if (req.pharmacyId) q.pharmacy = req.pharmacyId;
+    const medicine = await Medicine.findOne(q);
     if (!medicine)
       return res
         .status(404)
@@ -387,7 +483,9 @@ export const restoreMedicine = async (req, res) => {
 
 export const purgeMedicine = async (req, res) => {
   try {
-    const medicine = await Medicine.findById(req.params.id);
+    const q = { _id: req.params.id };
+    if (req.pharmacyId) q.pharmacy = req.pharmacyId;
+    const medicine = await Medicine.findOne(q);
     if (!medicine)
       return res
         .status(404)
@@ -406,13 +504,12 @@ export const purgeMedicine = async (req, res) => {
 };
 
 // Active medicines (not deleted & not expired as of today)
-export const getActiveMedicines = async (_req, res) => {
+export const getActiveMedicines = async (req, res) => {
   try {
     const today = new Date();
-    const medicines = await Medicine.find({
-      isDeleted: false,
-      expiryDate: { $gte: today },
-    }).populate("supplier");
+    const q = { isDeleted: false, expiryDate: { $gte: today } };
+    if (req.pharmacyId) q.pharmacy = req.pharmacyId;
+    const medicines = await Medicine.find(q).populate("supplier");
     res.json({ success: true, medicines });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
@@ -817,9 +914,9 @@ export const exportMedicinesExcel = async (req, res) => {
     );
     const nearCutoff = new Date(startToday.getTime() + nearDays * 86400000);
 
-    const all = await Medicine.find({ isDeleted: false })
-      .populate("supplier")
-      .lean();
+    const q = { isDeleted: false };
+    if (req.pharmacyId) q.pharmacy = req.pharmacyId;
+    const all = await Medicine.find(q).populate("supplier").lean();
     const expired = [];
     const near = [];
     const active = [];

@@ -41,7 +41,8 @@ export const createUserAnyRole = async (req, res, next) => {
       email,
       password: hashed,
       role: role || "employee",
-      branch,
+      // Admins are pharmacy-level; do not bind to a branch
+      branch: role === "admin" ? undefined : branch,
     });
     await user.save();
     logAudit("create_user", req.user.id, { target: user._id, role: user.role });
@@ -54,13 +55,17 @@ export const createUserAnyRole = async (req, res, next) => {
 
 export const updateUserAnyRole = async (req, res, next) => {
   try {
-    const { id } = req.params;
+    const id = req.params.userId || req.params.id; // support pharmacy-scoped route
     const body = { ...req.body };
     if (body.role === "super_admin") {
       return next(errorHandler(403, "Cannot assign super_admin"));
     }
     if (body.password) {
       body.password = bcrypt.hashSync(body.password, 10);
+    }
+    // If changing user to admin, clear branch assignment
+    if (body.role === "admin") {
+      body.branch = undefined;
     }
     const user = await User.findByIdAndUpdate(id, body, { new: true }).select(
       "-password"
@@ -92,7 +97,7 @@ export const elevateToAdmin = async (req, res, next) => {
 
 export const deleteUserAny = async (req, res, next) => {
   try {
-    const { id } = req.params;
+    const id = req.params.userId || req.params.id; // support pharmacy-scoped route
     const user = await User.findById(id);
     if (!user) return next(errorHandler(404, "User not found"));
     if (user.role === "super_admin")
@@ -645,6 +650,60 @@ export const pharmacyUsers = async (req, res, next) => {
   }
 };
 
+// Create a user within a given pharmacy (super admin only)
+export const createPharmacyUser = async (req, res, next) => {
+  try {
+    const { id } = req.params; // pharmacy id
+    const pharmacy = await Pharmacy.findById(id).lean();
+    if (!pharmacy) return next(errorHandler(404, "Pharmacy not found"));
+    const { username, email, password, role, branch } = req.body || {};
+    if (!username || !email || !password) {
+      return next(errorHandler(400, "Missing fields"));
+    }
+    if (role === "super_admin") {
+      return next(errorHandler(403, "Cannot create super_admin"));
+    }
+    const exists = await User.findOne({ $or: [{ email }, { username }] });
+    if (exists)
+      return next(errorHandler(409, "User with email/username exists"));
+    // Optional: validate branch belongs to this pharmacy if provided
+    let branchId = undefined;
+    if (branch && role !== "admin") {
+      const br = await Branch.findOne({ _id: branch, pharmacy: id })
+        .select("_id")
+        .lean();
+      if (!br)
+        return next(errorHandler(400, "Branch does not belong to pharmacy"));
+      branchId = br._id;
+    }
+    const hashed = bcrypt.hashSync(password, 10);
+    const user = await User.create({
+      username,
+      email,
+      password: hashed,
+      role: role && role !== "super_admin" ? role : "employee",
+      pharmacy: id,
+      ...(branchId ? { branch: branchId } : {}),
+    });
+    // If created user is an admin, set as this pharmacy's primary admin
+    try {
+      if ((role || "employee") === "admin") {
+        const ph = await Pharmacy.findById(id);
+        if (ph) {
+          ph.primaryAdmin = user._id;
+          await ph.save();
+        }
+      }
+    } catch (_) {
+      // non-fatal
+    }
+    const { password: _p, ...safe } = user._doc;
+    res.status(201).json({ success: true, user: safe });
+  } catch (e) {
+    next(errorHandler(400, e.message));
+  }
+};
+
 export const pharmacyBranches = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -660,6 +719,57 @@ export const pharmacyBranches = async (req, res, next) => {
     });
   } catch (e) {
     next(errorHandler(500, e.message));
+  }
+};
+
+// Create a branch within a given pharmacy (super admin only)
+export const createPharmacyBranch = async (req, res, next) => {
+  try {
+    const { id } = req.params; // pharmacy id
+    const pharmacy = await Pharmacy.findById(id).lean();
+    if (!pharmacy) return next(errorHandler(404, "Pharmacy not found"));
+    const { name, address } = req.body || {};
+    if (!name) return next(errorHandler(400, "Name required"));
+    // Global unique branch names by schema; fail if exists
+    const exists = await Branch.findOne({ name });
+    if (exists) return next(errorHandler(409, "Branch name already exists"));
+    const branch = await Branch.create({ name, address, pharmacy: id });
+    res.status(201).json({ success: true, branch });
+  } catch (e) {
+    next(errorHandler(400, e.message));
+  }
+};
+
+// Update a branch within a given pharmacy (super admin only)
+export const updatePharmacyBranch = async (req, res, next) => {
+  try {
+    const { id, branchId } = req.params; // pharmacy id, branch id
+    const pharmacy = await Pharmacy.findById(id).lean();
+    if (!pharmacy) return next(errorHandler(404, "Pharmacy not found"));
+    const branch = await Branch.findOne({ _id: branchId, pharmacy: id });
+    if (!branch) return next(errorHandler(404, "Branch not found"));
+    const { name, address } = req.body || {};
+    if (name) branch.name = name;
+    if (address !== undefined) branch.address = address;
+    await branch.save();
+    res.json({ success: true, branch });
+  } catch (e) {
+    next(errorHandler(400, e.message));
+  }
+};
+
+// Delete a branch within a given pharmacy (super admin only)
+export const deletePharmacyBranch = async (req, res, next) => {
+  try {
+    const { id, branchId } = req.params; // pharmacy id, branch id
+    const pharmacy = await Pharmacy.findById(id).lean();
+    if (!pharmacy) return next(errorHandler(404, "Pharmacy not found"));
+    const branch = await Branch.findOne({ _id: branchId, pharmacy: id });
+    if (!branch) return next(errorHandler(404, "Branch not found"));
+    await Branch.deleteOne({ _id: branchId });
+    res.json({ success: true, message: "Deleted" });
+  } catch (e) {
+    next(errorHandler(400, e.message));
   }
 };
 

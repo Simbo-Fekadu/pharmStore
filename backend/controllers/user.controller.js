@@ -5,7 +5,14 @@ import errorHandler from "../utils/error.js";
 // Get all users
 export const getUsers = async (req, res) => {
   try {
-    const users = await User.find().populate("branch");
+    const q = {};
+    // Super admin sees all by default, but can scope via ?pharmacyId
+    if (req.user?.role !== "super_admin") {
+      if (req.user?.pharmacy) q.pharmacy = req.user.pharmacy;
+    } else if (req.query?.pharmacyId) {
+      q.pharmacy = req.query.pharmacyId;
+    }
+    const users = await User.find(q).populate("branch");
     res.status(200).json({ success: true, users });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
@@ -102,6 +109,7 @@ export const createEmployee = async (req, res) => {
       password: hashed,
       role: "employee", // cannot create super_admin here
       branch: branch || undefined,
+      pharmacy: req.user?.pharmacy || undefined,
     });
     await user.save();
     const { password: _p, ...safe } = user._doc;

@@ -13,11 +13,12 @@ import {
   requireInventoryAccess,
   requireAdmin,
 } from "../utils/verifyUser.js";
+import { attachPharmacyContext } from "../middleware/pharmacyScope.js";
 
 const router = express.Router();
 
 // All routes require authentication
-router.use(verifyToken);
+router.use(verifyToken, attachPharmacyContext);
 
 // Create a new sale (employees can create sales)
 router.post("/", createSale);

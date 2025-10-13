@@ -6,10 +6,14 @@ import Supplier from "./models/supplier.model.js";
 config();
 
 async function run() {
-  const uri = process.env.MONGO_URL;
-  if (!uri) {
-    console.error("MONGO_URL not set in .env");
-    process.exit(1);
+  const uri =
+    process.env.MONGO_URL ||
+    process.env.MONGO_URI ||
+    "mongodb://localhost:27017/pharmstore";
+  if (!process.env.MONGO_URL && !process.env.MONGO_URI) {
+    console.warn(
+      "[seed] No MONGO_URL/MONGO_URI set; defaulting to mongodb://localhost:27017/pharmstore"
+    );
   }
   await mongoose.connect(uri);
   console.log("Connected for seeding");

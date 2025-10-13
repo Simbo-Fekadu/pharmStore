@@ -1,4 +1,5 @@
 import Sale from "../models/sale.model.js";
+import Branch from "../models/branch.model.js";
 import Medicine from "../models/medicine.model.js";
 import User from "../models/user.model.js";
 import { StockLedger, StockBalance } from "../models/inventory.model.js";
@@ -281,8 +282,33 @@ export const listAllSales = async (req, res, next) => {
       ({ start, end } = r);
     }
 
+    // restrict to branches of current pharmacy
+    let branchScopeIds = [];
+    if (req.pharmacyId) {
+      const branches = await Branch.find(
+        { pharmacy: req.pharmacyId },
+        { _id: 1 }
+      ).lean();
+      branchScopeIds = branches.map((b) => b._id);
+      if (branchScopeIds.length === 0) {
+        return res.json({
+          success: true,
+          page: 1,
+          pageSize: 0,
+          totalCount: 0,
+          totals: { totalAmount: 0, totalTransactions: 0 },
+          sales: [],
+          period: {
+            start: start.toISOString().split("T")[0],
+            end: end.toISOString().split("T")[0],
+          },
+        });
+      }
+    }
+
     const filter = { date: { $gte: start, $lte: end } };
     if (branchId) filter.branchId = branchId;
+    else if (branchScopeIds.length) filter.branchId = { $in: branchScopeIds };
     if (employeeId) filter.employeeId = employeeId;
 
     const page = Math.max(1, Number(req.query.page) || 1);
@@ -357,6 +383,24 @@ export const getAdminSalesSummary = async (req, res, next) => {
       end.setHours(23, 59, 59, 999);
     }
     const match = { date: { $gte: start, $lte: end } };
+    if (req.pharmacyId) {
+      const branches = await Branch.find(
+        { pharmacy: req.pharmacyId },
+        { _id: 1 }
+      ).lean();
+      const ids = branches.map((b) => b._id);
+      if (ids.length === 0) {
+        return res.json({
+          success: true,
+          byBranch: [],
+          period: {
+            start: start.toISOString().split("T")[0],
+            end: end.toISOString().split("T")[0],
+          },
+        });
+      }
+      match.branchId = { $in: ids };
+    }
     const agg = await Sale.aggregate([
       { $match: match },
       {
@@ -385,7 +429,7 @@ export const getAdminSalesSummary = async (req, res, next) => {
 };
 
 // ADMIN: Today's total sales across all branches
-export const getAdminTodayTotal = async (_req, res, next) => {
+export const getAdminTodayTotal = async (req, res, next) => {
   try {
     const now = new Date();
     const start = new Date(
@@ -406,8 +450,18 @@ export const getAdminTodayTotal = async (_req, res, next) => {
       59,
       999
     );
+    const match = { date: { $gte: start, $lte: end } };
+    if (req.pharmacyId) {
+      const branches = await Branch.find(
+        { pharmacy: req.pharmacyId },
+        { _id: 1 }
+      ).lean();
+      const ids = branches.map((b) => b._id);
+      match.branchId = { $in: ids };
+    }
+
     const agg = await Sale.aggregate([
-      { $match: { date: { $gte: start, $lte: end } } },
+      { $match: match },
       {
         $lookup: {
           from: "medicines",

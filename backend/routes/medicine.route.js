@@ -13,7 +13,12 @@ import {
   importTemplate,
   exportMedicinesExcel,
 } from "../controllers/medicine.controller.js";
-import { verifyToken, requireInventoryAccess } from "../utils/verifyUser.js";
+import {
+  verifyToken,
+  requireInventoryAccess,
+  requireAdmin,
+} from "../utils/verifyUser.js";
+import { attachPharmacyContext } from "../middleware/pharmacyScope.js";
 
 const router = express.Router();
 const upload = multer({
@@ -22,8 +27,16 @@ const upload = multer({
 });
 
 // CRUD endpoints (merged from previous duplicate route file)
-router.post("/", createMedicine);
-router.get("/", getMedicines);
+// Create requires auth and inventory access
+router.post(
+  "/",
+  verifyToken,
+  requireInventoryAccess,
+  attachPharmacyContext,
+  createMedicine
+);
+// List requires auth to properly scope by pharmacy
+router.get("/", verifyToken, attachPharmacyContext, getMedicines);
 router.get("/active/list", getActiveMedicines);
 router.post(
   "/import",
@@ -44,10 +57,36 @@ router.get(
   requireInventoryAccess,
   exportMedicinesExcel
 );
-router.get("/:id", getMedicine);
-router.put("/:id", updateMedicine);
-router.delete("/:id", deleteMedicine);
-router.post("/:id/restore", restoreMedicine);
-router.delete("/:id/purge", purgeMedicine);
+router.get("/:id", verifyToken, attachPharmacyContext, getMedicine);
+// Update/Delete restricted to admin or super_admin
+router.put(
+  "/:id",
+  verifyToken,
+  requireAdmin,
+  attachPharmacyContext,
+  updateMedicine
+);
+router.delete(
+  "/:id",
+  verifyToken,
+  requireAdmin,
+  attachPharmacyContext,
+  deleteMedicine
+);
+router.post(
+  "/:id/restore",
+  verifyToken,
+  requireAdmin,
+  attachPharmacyContext,
+  restoreMedicine
+);
+router.delete(
+  "/:id/purge",
+  verifyToken,
+  requireAdmin,
+  attachPharmacyContext,
+  purgeMedicine
+);
+// removed duplicate unprotected purge route
 
 export default router;

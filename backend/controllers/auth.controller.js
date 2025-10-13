@@ -103,6 +103,7 @@ export const signin = async (req, res, next) => {
         id: validUser._id,
         role: validUser.role,
         branch: validUser.branch?._id || validUser.branch,
+        pharmacy: validUser.pharmacy || undefined,
       },
       process.env.SECRET,
       {

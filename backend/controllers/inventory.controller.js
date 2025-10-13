@@ -194,8 +194,88 @@ export const getLedgerHistory = async (req, res, next) => {
   try {
     const { medicineId, locationId, limit = 100 } = req.query;
     const filter = {};
+    const isSuper = req.user?.role === "super_admin";
+    // Base filters from query
     if (medicineId) filter.medicineId = medicineId;
     if (locationId) filter.locationId = locationId;
+
+    // Resolve allowed scopes when a pharmacy context exists
+    let allowedLocs = [];
+    let allowedMeds = [];
+    if (req.pharmacyId) {
+      try {
+        const [branches, stores, meds] = await Promise.all([
+          Branch.find({ pharmacy: req.pharmacyId }).select("_id").lean(),
+          Store.find({ pharmacy: req.pharmacyId }).select("_id").lean(),
+          Medicine.find({ pharmacy: req.pharmacyId }).select("_id").lean(),
+        ]);
+        allowedLocs = [
+          ...branches.map((b) => b._id),
+          ...stores.map((s) => s._id),
+        ];
+        allowedMeds = meds.map((m) => m._id);
+      } catch {}
+    }
+
+    if (!isSuper) {
+      // Non-super users MUST be scoped by their pharmacy; forbid cross-tenant filters
+      if (!req.pharmacyId) {
+        return res
+          .status(403)
+          .json({ success: false, message: "Pharmacy context required" });
+      }
+      // If client supplied explicit ids, validate they belong to allowed sets
+      if (
+        locationId &&
+        !allowedLocs.some((id) => id.toString() === String(locationId))
+      ) {
+        return res
+          .status(403)
+          .json({ success: false, message: "Forbidden location" });
+      }
+      if (
+        medicineId &&
+        !allowedMeds.some((id) => id.toString() === String(medicineId))
+      ) {
+        return res
+          .status(403)
+          .json({ success: false, message: "Forbidden medicine" });
+      }
+      // Always enforce scope for non-super
+      const scopeOr = [];
+      if (allowedLocs.length)
+        scopeOr.push({ locationId: { $in: allowedLocs } });
+      if (allowedMeds.length)
+        scopeOr.push({ medicineId: { $in: allowedMeds } });
+      if (!scopeOr.length) {
+        return res.json({ success: true, count: 0, entries: [] });
+      }
+      // Combine base filters (if provided) with scope using $and
+      const scopedFilter = { $and: [{ $or: scopeOr }] };
+      if (filter.locationId) scopedFilter.$and.push({ locationId });
+      if (filter.medicineId) scopedFilter.$and.push({ medicineId });
+      // Replace filter with scopedFilter
+      Object.keys(filter).forEach((k) => delete filter[k]);
+      Object.assign(filter, scopedFilter);
+    } else {
+      // Super admin: if pharmacyId provided, apply scope; else show all
+      if (req.pharmacyId) {
+        const scopeOr = [];
+        if (allowedLocs.length)
+          scopeOr.push({ locationId: { $in: allowedLocs } });
+        if (allowedMeds.length)
+          scopeOr.push({ medicineId: { $in: allowedMeds } });
+        if (!scopeOr.length) {
+          return res.json({ success: true, count: 0, entries: [] });
+        }
+        // Merge with any explicit filters via $and
+        const scoped = { $and: [{ $or: scopeOr }] };
+        if (filter.locationId) scoped.$and.push({ locationId });
+        if (filter.medicineId) scoped.$and.push({ medicineId });
+        Object.keys(filter).forEach((k) => delete filter[k]);
+        Object.assign(filter, scoped);
+      }
+    }
     let entries = await StockLedger.find(filter)
       .sort({ createdAt: -1 })
       .limit(Number(limit))
@@ -1165,12 +1245,10 @@ export const employeeAddBranchMedicinesBatch = async (req, res) => {
         .json({ success: false, message: "Branch context required" });
     }
     if (!["employee", "inventory_manager"].includes(user.role)) {
-      return res
-        .status(403)
-        .json({
-          success: false,
-          message: "Only employees can add branch medicines",
-        });
+      return res.status(403).json({
+        success: false,
+        message: "Only employees can add branch medicines",
+      });
     }
     const { items } = req.body;
     if (!Array.isArray(items) || !items.length) {

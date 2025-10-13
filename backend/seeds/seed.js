@@ -12,35 +12,55 @@ import Request from "../models/request.model.js";
 
 dotenv.config();
 
-const MONGO_URL = process.env.MONGO_URL;
-if (!MONGO_URL) {
-  console.error("MONGO_URL not set in environment");
-  process.exit(1);
+// Allow MONGO_URL or MONGO_URI; default to local for developer convenience
+const MONGO_URL =
+  process.env.MONGO_URL ||
+  process.env.MONGO_URI ||
+  "mongodb://localhost:27017/pharmstore";
+if (!process.env.MONGO_URL && !process.env.MONGO_URI) {
+  console.warn(
+    "[seed] No MONGO_URL/MONGO_URI provided; defaulting to mongodb://localhost:27017/pharmstore"
+  );
 }
 
 const round2 = (n) => Math.round(n * 100) / 100;
 const ceil2 = (n) => Math.ceil(n * 100) / 100;
 
+import Pharmacy from "../models/pharmacy.model.js";
+
 async function ensureCoreOrgs() {
+  // Use or create a default pharmacy for seed data
+  let pharmacy = await Pharmacy.findOne({ code: "ZELALEM" });
+  if (!pharmacy) {
+    pharmacy = await Pharmacy.create({
+      name: "Zelalem Pharmacy",
+      code: "ZELALEM",
+    });
+  }
   // Ensure 3 branches and a central store
-  let branches = await Branch.find();
+  let branches = await Branch.find({ pharmacy: pharmacy._id });
   if (branches.length === 0) {
     branches = await Branch.insertMany([
-      { name: "Branch Ayat", address: "Ayat" },
-      { name: "Branch Tafo", address: "Tafo" },
-      { name: "Branch Kazanchis", address: "Kazanchis" },
+      { name: "Branch Ayat", address: "Ayat", pharmacy: pharmacy._id },
+      { name: "Branch Tafo", address: "Tafo", pharmacy: pharmacy._id },
+      {
+        name: "Branch Kazanchis",
+        address: "Kazanchis",
+        pharmacy: pharmacy._id,
+      },
     ]);
     console.log("Seeded branches");
   }
-  let store = await Store.findOne();
+  let store = await Store.findOne({ pharmacy: pharmacy._id });
   if (!store) {
     store = await Store.create({
       name: "Central Store",
       address: "Head Office",
+      pharmacy: pharmacy._id,
     });
     console.log("Seeded central store");
   }
-  return { branches, store };
+  return { branches, store, pharmacy };
 }
 
 async function ensureAdmin() {
@@ -628,7 +648,7 @@ async function run() {
   console.log("Connected to MongoDB");
 
   const admin = await ensureAdmin();
-  const { branches, store } = await ensureCoreOrgs();
+  const { branches, store, pharmacy } = await ensureCoreOrgs();
   const supplierIds = await ensureSuppliers();
 
   console.log("Wiping existing stock and medicines...");

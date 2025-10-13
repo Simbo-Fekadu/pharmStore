@@ -21,6 +21,7 @@ import {
   requireInventoryAccess,
   requireAdmin,
 } from "../utils/verifyUser.js";
+import { attachPharmacyContext } from "../middleware/pharmacyScope.js";
 import {
   getLedgerHistory,
   directTransfer,
@@ -79,7 +80,7 @@ router.delete(
 router.post("/ledger", verifyToken, requireInventoryAccess, postLedger);
 router.get("/stock", getStock);
 router.get("/stock/central", getCentralAvailable);
-router.get("/ledger", verifyToken, getLedgerHistory);
+router.get("/ledger", verifyToken, attachPharmacyContext, getLedgerHistory);
 router.post(
   "/transfer/direct",
   verifyToken,

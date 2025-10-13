@@ -1,4 +1,5 @@
 # PharmStore
+
 <img width="1893" height="863" alt="image" src="https://github.com/user-attachments/assets/1ab879b3-b6b4-4427-9f15-f5c73615f4cf" />
 
 <img width="1887" height="866" alt="image" src="https://github.com/user-attachments/assets/504be9aa-559c-4a85-a47e-e905c861a0be" />
@@ -107,12 +108,14 @@ cd ../frontend && npm install
 
 ### 2. Environment Variables (Backend)
 
-Create `backend/.env`:
+Create `backend/.env` (or copy `backend/.env.example`):
 
 ```
 PORT=3000
+# Either MONGO_URL or MONGO_URI is supported. If neither is set the server will
+# default to a local MongoDB: mongodb://localhost:27017/pharmstore (developer convenience).
 MONGO_URI=mongodb://localhost:27017/pharmstore
-JWT_SECRET=replace_this_secret
+SECRET=replace_this_secret
 ```
 
 ### 3. Start Development

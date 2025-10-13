@@ -23,6 +23,10 @@ import {
   pharmacyTransactions,
   pharmacyBranchMedicines,
   pharmacyBranchSales,
+  createPharmacyUser,
+  createPharmacyBranch,
+  updatePharmacyBranch,
+  deletePharmacyBranch,
 } from "../controllers/superadmin.controller.js";
 
 const router = express.Router();
@@ -44,7 +48,14 @@ router.get("/pharmacies/:id", pharmacySummary);
 router.patch("/pharmacies/:id", updatePharmacy);
 router.delete("/pharmacies/:id", deletePharmacy);
 router.get("/pharmacies/:id/users", pharmacyUsers);
+router.post("/pharmacies/:id/users", createPharmacyUser);
+// User update/delete can use global routes, but for convenience expose pharmacy-scoped URLs as well
+router.patch("/pharmacies/:id/users/:userId", updateUserAnyRole);
+router.delete("/pharmacies/:id/users/:userId", deleteUserAny);
 router.get("/pharmacies/:id/branches", pharmacyBranches);
+router.post("/pharmacies/:id/branches", createPharmacyBranch);
+router.patch("/pharmacies/:id/branches/:branchId", updatePharmacyBranch);
+router.delete("/pharmacies/:id/branches/:branchId", deletePharmacyBranch);
 router.get("/pharmacies/:id/medicines", pharmacyMedicines);
 router.get("/pharmacies/:id/requests", pharmacyRequests);
 router.get("/pharmacies/:id/transactions", pharmacyTransactions);

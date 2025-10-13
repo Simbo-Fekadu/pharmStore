@@ -4,6 +4,7 @@ import Branch from "../models/branch.model.js";
 import Medicine from "../models/medicine.model.js";
 import Supplier from "../models/supplier.model.js";
 import Request from "../models/request.model.js";
+import Store from "../models/store.model.js";
 
 // Ensures at least one default pharmacy exists (Zelalem Pharmacy) and backfills
 // any legacy documents missing the pharmacy reference. Idempotent and safe.
@@ -60,6 +61,16 @@ export async function ensureDefaultPharmacyAndBackfill() {
       },
       { $set: { pharmacy: pid } }
     ),
+    Store.updateMany(
+      {
+        $or: [
+          { pharmacy: { $exists: false } },
+          { pharmacy: null },
+          { pharmacy: { $eq: undefined } },
+        ],
+      },
+      { $set: { pharmacy: pid } }
+    ).catch(() => ({ modifiedCount: 0 })),
     Request.updateMany(
       {
         $or: [

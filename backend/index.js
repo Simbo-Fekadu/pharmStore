@@ -19,12 +19,19 @@ import Medicine from "./models/medicine.model.js"; // for migration / index main
 config();
 
 const PORT = process.env.PORT || 3000;
-const MONGO_URL = process.env.MONGO_URL;
+// Support either MONGO_URL or MONGO_URI; fall back to a sensible local default for
+// developer convenience. In production you should set MONGO_URL / MONGO_URI.
+const MONGO_URL =
+  process.env.MONGO_URL ||
+  process.env.MONGO_URI ||
+  "mongodb://localhost:27017/pharmstore";
 const JWT_SECRET = process.env.SECRET;
-if (!MONGO_URL) {
-  console.error("[FATAL] MONGO_URL is not defined in environment (.env)");
-  process.exit(1);
+if (!process.env.MONGO_URL && !process.env.MONGO_URI) {
+  console.warn(
+    "[WARN] No MONGO_URL / MONGO_URI set; defaulting to local MongoDB at mongodb://localhost:27017/pharmstore"
+  );
 }
+// JWT secret is required; fail fast if missing.
 if (!JWT_SECRET) {
   console.error(
     "[FATAL] SECRET (JWT secret) is not defined in environment (.env)"
@@ -42,12 +49,21 @@ mongoose.connection.on("disconnected", () => {
 
 async function runMigrationsAndSeeding() {
   try {
-    const count = await Branch.countDocuments();
+    const PharmacyModel = (await import("./models/pharmacy.model.js")).default;
+    let pharmacy = await PharmacyModel.findOne({ code: "ZELALEM" });
+    if (!pharmacy) {
+      pharmacy = await PharmacyModel.create({
+        name: "Zelalem Pharmacy",
+        code: "ZELALEM",
+      });
+    }
+    const pid = pharmacy._id;
+    const count = await Branch.countDocuments({ pharmacy: pid });
     if (count === 0) {
       await Branch.insertMany([
-        { name: "Branch Ayat", address: "Ayat" },
-        { name: "Branch Tafo", address: "Tafo" },
-        { name: "Branch Kazanchis", address: "Kazanchis" },
+        { name: "Branch Ayat", address: "Ayat", pharmacy: pid },
+        { name: "Branch Tafo", address: "Tafo", pharmacy: pid },
+        { name: "Branch Kazanchis", address: "Kazanchis", pharmacy: pid },
       ]);
       console.log("Seeded default branches");
     }
@@ -55,9 +71,22 @@ async function runMigrationsAndSeeding() {
     console.warn("Branch seeding failed:", seedErr.message);
   }
   try {
-    const storeCount = await Store.countDocuments();
+    const PharmacyModel = (await import("./models/pharmacy.model.js")).default;
+    let pharmacy = await PharmacyModel.findOne({ code: "ZELALEM" });
+    if (!pharmacy) {
+      pharmacy = await PharmacyModel.create({
+        name: "Zelalem Pharmacy",
+        code: "ZELALEM",
+      });
+    }
+    const pid = pharmacy._id;
+    const storeCount = await Store.countDocuments({ pharmacy: pid });
     if (storeCount === 0) {
-      await Store.create({ name: "Central Store", address: "Head Office" });
+      await Store.create({
+        name: "Central Store",
+        address: "Head Office",
+        pharmacy: pid,
+      });
       console.log("Seeded central store");
     }
   } catch (storeErr) {
@@ -171,6 +200,55 @@ async function start() {
   app.listen(PORT, () => {
     console.log(`API server listening on http://localhost:${PORT}`);
   });
+
+  // Optional Atlas background sync
+  try {
+    const enableBg = process.env.ATLAS_SYNC_BACKGROUND === "1";
+    const atlasUri = process.env.MONGO_ATLAS_URL;
+    const intervalMs = Number(process.env.ATLAS_SYNC_INTERVAL_MS || 300000); // default 5 min
+    if (enableBg && atlasUri) {
+      const { connectAtlas, getAtlasConnection, runAtlasSync } = await import(
+        "./services/atlasSync.service.js"
+      );
+      // Small helper to ensure atlas connection, retry if offline
+      const ensureAtlas = async () => {
+        try {
+          const conn = getAtlasConnection();
+          if (!conn || conn.readyState !== 1) {
+            await connectAtlas(atlasUri);
+            console.log("[AtlasSync] Connected to Atlas");
+          }
+        } catch (e) {
+          console.warn("[AtlasSync] connect retry failed:", e.message);
+        }
+      };
+      // Try initial connect but don't crash if offline
+      await ensureAtlas();
+      setInterval(async () => {
+        await ensureAtlas();
+        try {
+          const res = await runAtlasSync({ logger: console });
+          console.log(
+            "[AtlasSync] background run result:",
+            JSON.stringify(res)
+          );
+        } catch (e) {
+          console.warn("[AtlasSync] background run error:", e.message);
+        }
+      }, intervalMs);
+      console.log(
+        `[AtlasSync] Background sync enabled every ${intervalMs}ms (MONGO_ATLAS_URL present)`
+      );
+    } else {
+      if (enableBg && !atlasUri) {
+        console.warn(
+          "[AtlasSync] ATLAS_SYNC_BACKGROUND=1 but MONGO_ATLAS_URL is not set"
+        );
+      }
+    }
+  } catch (e) {
+    console.warn("[AtlasSync] scheduler init failed:", e.message);
+  }
 }
 const __dirname = path.resolve();
 const app = express();
@@ -252,6 +330,8 @@ app.use("/backend/maintenance", maintenanceRouter);
 import Pharmacy from "./models/pharmacy.model.js";
 import exportRouter from "./routes/export.route.js";
 app.use("/backend/export", exportRouter);
+import syncRouter from "./routes/sync.route.js";
+app.use("/backend/sync", syncRouter);
 
 // Temporary migration route (super admin only) to backfill pharmacy
 app.post("/backend/maintenance/backfill-pharmacy", async (req, res) => {
@@ -359,6 +439,34 @@ app.get("/backend/_routes", (_req, res) => {
     res.json({ count: all.length, routes: all });
   } catch (e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+// Lightweight health endpoint (some legacy builds call /backend/health/ping)
+app.get("/backend/health/ping", (_req, res) => {
+  res.json({
+    success: true,
+    status: "ok",
+    time: new Date().toISOString(),
+    uptime: process.uptime(),
+  });
+});
+
+// Placeholder bulk sync endpoint to satisfy legacy offline sync callers.
+// Query: /backend/sync/bulk/changes?models=a,b,c&limit=400
+// Returns: { success:true, changes: { model: [] } }
+app.get("/backend/sync/bulk/changes", (req, res) => {
+  try {
+    const modelsParam = req.query.models || "";
+    const list = String(modelsParam)
+      .split(/[,\s]/)
+      .map((m) => m.trim())
+      .filter(Boolean);
+    const changes = {};
+    list.forEach((m) => (changes[m] = []));
+    res.json({ success: true, changes, lastCursor: null });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
   }
 });
 

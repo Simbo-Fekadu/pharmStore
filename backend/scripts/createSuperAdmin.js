@@ -10,10 +10,14 @@ dotenv.config();
 async function run() {
   const email = process.env.SUPERADMIN_EMAIL || "simboadmin@gmail.com";
   const password = process.env.SUPERADMIN_PASSWORD || "ih3ba3so";
-  const mongo = process.env.MONGO_URL;
-  if (!mongo) {
-    console.error("MONGO_URL missing in environment");
-    process.exit(1);
+  const mongo =
+    process.env.MONGO_URL ||
+    process.env.MONGO_URI ||
+    "mongodb://localhost:27017/pharmstore";
+  if (!process.env.MONGO_URL && !process.env.MONGO_URI) {
+    console.warn(
+      "[superadmin] No MONGO_URL/MONGO_URI set; defaulting to mongodb://localhost:27017/pharmstore"
+    );
   }
   try {
     await connectDB(mongo);

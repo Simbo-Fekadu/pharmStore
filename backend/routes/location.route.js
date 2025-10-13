@@ -1,4 +1,6 @@
 import express from "express";
+import { verifyToken } from "../utils/verifyUser.js";
+import { attachPharmacyContext } from "../middleware/pharmacyScope.js";
 import {
   createBranch,
   getBranches,
@@ -13,6 +15,8 @@ import {
 } from "../controllers/location.controller.js";
 
 const router = express.Router();
+
+router.use(verifyToken, attachPharmacyContext);
 
 // Branch routes
 router.post("/branch", createBranch);
