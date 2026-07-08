@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { getApiBase } from "../api/base";
+import { API_BASE } from "../api/base";
 import { authFetch } from "../api/authFetch";
 import {
   Building2,
@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
-const API = getApiBase() + "/backend";
+const API = API_BASE;
 
 export default function SuperAdminPharmacies() {
   const [items, setItems] = useState([]);

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getApiBase } from "../api/base";
+import { API_BASE } from "../api/base";
 import { authFetch } from "../api/authFetch";
 import {
   Users,
@@ -13,7 +13,7 @@ import {
   RefreshCcw,
 } from "lucide-react";
 
-const API = getApiBase() + "/backend";
+const API = API_BASE;
 
 const num = (v) => (typeof v === "number" ? v : 0);
 

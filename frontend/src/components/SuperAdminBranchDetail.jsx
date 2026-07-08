@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { getApiBase } from "../api/base";
+import { API_BASE } from "../api/base";
 import { authFetch } from "../api/authFetch";
 
-const API = getApiBase() + "/backend";
+const API = API_BASE;
 
 export default function SuperAdminBranchDetail() {
   const { id, branchId } = useParams(); // pharmacy id, branch id
