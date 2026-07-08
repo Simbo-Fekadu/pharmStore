@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { getApiBase } from "../api/base";
+import { API_BASE } from "../api/base";
 
 const SignUp = () => {
   const [form, setForm] = useState({
@@ -23,7 +23,7 @@ const SignUp = () => {
     setMessage("");
     setIsError(false);
     try {
-      const res = await fetch(`${getApiBase()}/backend/auth/signup`, {
+      const res = await fetch(`${API_BASE}/auth/signup`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
