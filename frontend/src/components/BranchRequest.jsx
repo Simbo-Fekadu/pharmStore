@@ -304,13 +304,23 @@ const BranchRequest = () => {
                           : ""
                       }
                       ${
-                        r.status === "Fulfilled"
+                        r.status === "Shipped"
+                          ? "bg-indigo-500/20 text-indigo-300 border-indigo-400/30"
+                          : ""
+                      }
+                      ${
+                        r.status === "Received"
                           ? "bg-emerald-500/20 text-emerald-300 border-emerald-400/30"
                           : ""
                       }
                       ${
                         r.status === "Rejected"
                           ? "bg-rose-500/20 text-rose-300 border-rose-400/30"
+                          : ""
+                      }
+                      ${
+                        r.status === "Reversed"
+                          ? "bg-gray-500/20 text-gray-300 border-gray-400/30"
                           : ""
                       }
                     `}
@@ -328,6 +338,33 @@ const BranchRequest = () => {
                   className="px-3 py-1.5 text-xs rounded bg-red-500/20 hover:bg-red-500/30 text-red-200 font-semibold"
                 >
                   Cancel
+                </button>
+              )}
+              {r.status === "Shipped" && (
+                <button
+                  onClick={async () => {
+                    try {
+                      const res = await authFetch(
+                        `${API}/inventory/request/${r._id}/confirm-receipt`,
+                        { method: "POST", headers: { "Content-Type": "application/json" } }
+                      );
+                      const data = await res.json();
+                      if (res.ok && data.success) {
+                        setMessage("Receipt confirmed");
+                        setIsError(false);
+                        load();
+                      } else {
+                        setMessage(data.message || "Confirm failed");
+                        setIsError(true);
+                      }
+                    } catch {
+                      setMessage("Network error");
+                      setIsError(true);
+                    }
+                  }}
+                  className="px-3 py-1.5 text-xs rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 font-semibold"
+                >
+                  Confirm Receipt
                 </button>
               )}
               {r.status !== "Pending" && r.rejectionNote && (
