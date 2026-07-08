@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { getApiBase } from "../api/base";
+import { API_BASE } from "../api/base";
 
 const Logout = () => {
   const navigate = useNavigate();
@@ -12,7 +12,7 @@ const Logout = () => {
     setIsError(false);
     try {
       localStorage.removeItem("token");
-      const res = await fetch(`${getApiBase()}/backend/auth/signout`, {
+      const res = await fetch(`${API_BASE}/auth/signout`, {
         method: "POST",
         credentials: "include",
       });

@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { ceilOrDash, ceilCurrency } from "../utils/number";
 
-import { getApiBase } from "../api/base";
+import { API_BASE } from "../api/base";
 import { authFetch } from "../api/authFetch";
-const API = getApiBase() + "/backend";
+const API = API_BASE;
 
 const BranchRequest = () => {
   const [medicines, setMedicines] = useState([]);

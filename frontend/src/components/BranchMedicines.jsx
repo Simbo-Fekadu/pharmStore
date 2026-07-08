@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { ChevronDown, ChevronRight, Search, Filter } from "lucide-react";
 
-import { getApiBase } from "../api/base";
+import { API_BASE } from "../api/base";
 import { authFetch } from "../api/authFetch";
 import { ceilOrDash, ceilCurrency } from "../utils/number";
-const API = getApiBase() + "/backend";
+const API = API_BASE;
 
 // Branch medicine list styled like AdminMedicines (read-only subset)
 const BranchMedicines = () => {

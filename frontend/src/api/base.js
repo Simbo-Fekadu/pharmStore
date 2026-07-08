@@ -11,6 +11,8 @@ export function getApiBase() {
   return envBase || "http://localhost:3000";
 }
 
+export const API_BASE = getApiBase() + "/backend";
+
 export function isElectron() {
   return !!(
     typeof window !== "undefined" &&

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { getApiBase } from "../api/base";
+import { API_BASE } from "../api/base";
 import { authFetch } from "../api/authFetch";
 import {
   Building2,
@@ -11,7 +11,7 @@ import {
   ClipboardList,
 } from "lucide-react";
 
-const API = getApiBase() + "/backend";
+const API = API_BASE;
 
 const fmt = (n) => (typeof n === "number" ? n.toLocaleString() : n || 0);
 

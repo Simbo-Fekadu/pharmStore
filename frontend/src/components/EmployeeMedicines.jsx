@@ -1,21 +1,13 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { ChevronDown, ChevronRight, Search, Filter } from "lucide-react";
-import { getApiBase } from "../api/base";
+import { API_BASE } from "../api/base";
 import { authFetch } from "../api/authFetch";
-import { ceilCurrency } from "../utils/number";
+import { sortByRecent, formatBirr, sellingValue, displayQuantity } from "../utils/medicine";
 import useToast from "../hooks/useToast";
-const API = getApiBase() + "/backend";
+const API = API_BASE;
 
 const EmployeeMedicines = () => {
   const toast = useToast();
-  const sortByRecent = (arr) =>
-    (arr || [])
-      .slice()
-      .sort(
-        (a, b) =>
-          new Date(b.updatedAt || b.createdAt || 0) -
-          new Date(a.updatedAt || a.createdAt || 0)
-      );
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(false);
   const [openRow, setOpenRow] = useState(null);
@@ -35,29 +27,6 @@ const EmployeeMedicines = () => {
   // Branches removed; branch auto-detected from session
   const [submitting, setSubmitting] = useState(false);
 
-  // Price helpers: match admin logic
-  const formatBirr = (v) => ceilCurrency(v);
-  const sellingValue = (m) => {
-    const pp = Number(m.purchasePrice);
-    const sp = Number(m.sellingPrice);
-    if (!isFinite(pp)) return sp;
-    if (!isFinite(sp) || sp <= 3) {
-      const factor =
-        isFinite(sp) && sp >= 1 ? sp : m.category === "COSMETICS" ? 1.35 : 1.25;
-      return Math.round(pp * factor * 100) / 100;
-    }
-    return sp;
-  };
-  const displayQuantity = (m) => {
-    const total =
-      m.remainingQuantity ??
-      m.initialQuantity ??
-      m.liveQuantity ??
-      m.centralNetQuantity ??
-      m.quantity ??
-      0;
-    return m.packSize ? Math.floor(total / m.packSize) : total;
-  };
   const displayPrice = (m) => {
     if (m.sellingPriceBase) {
       return `${formatBirr(m.sellingPriceBase)}/${m.baseUnit || "unit"}`;

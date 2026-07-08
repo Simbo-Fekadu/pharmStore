@@ -12,28 +12,33 @@ import {
   DollarSign,
   Coins,
 } from "lucide-react";
-import { getApiBase } from "../api/base";
+import { API_BASE } from "../api/base.js";
 import { authFetch } from "../api/authFetch";
-const API = getApiBase() + "/backend";
+import { ceilCurrency } from "../utils/number";
 
-// Dashboard with summary metrics
-const AdminDashboard = () => {
-  const isSuper =
-    typeof window !== "undefined" &&
-    localStorage.getItem("role") === "super_admin";
+const API = API_BASE;
+
+const Dashboard = ({ role: propRole }) => {
+  const role =
+    propRole ||
+    (typeof window !== "undefined" && localStorage.getItem("role"));
+  const isSuper = role === "super_admin";
+  const isAdmin = role === "admin" || isSuper;
+  const isEmployee = role === "employee";
+
   const [superMode, setSuperMode] = useState(() =>
     isSuper
       ? localStorage.getItem("super_admin_mode") || "pharmacies"
       : "overview"
   );
-  // Always default super admin landing to "pharmacies" (override any stale stored value like "branches")
+
   useEffect(() => {
     if (isSuper && superMode !== "pharmacies") {
       setSuperMode("pharmacies");
       localStorage.setItem("super_admin_mode", "pharmacies");
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSuper]);
+  }, [isSuper, superMode]);
+
   useEffect(() => {
     if (!isSuper) return;
     const handler = () => {
@@ -42,33 +47,71 @@ const AdminDashboard = () => {
     window.addEventListener("storage", handler);
     return () => window.removeEventListener("storage", handler);
   }, [isSuper]);
+
   const switchSuperMode = (m) => {
     if (!isSuper) return;
     localStorage.setItem("super_admin_mode", m);
     setSuperMode(m);
   };
+
+  const navigate = useNavigate();
+  const [range, setRange] = useState(() => (isEmployee ? "today" : "30"));
+  const [medicines, setMedicines] = useState([]);
+  const [loading, setLoading] = useState(false);
+
   const [stats, setStats] = useState({
     total: 0,
     nearExpiry: 0,
     expired: 0,
     deleted: 0,
   });
-  const navigate = useNavigate();
-  // timeline reserved for future sales/prescription trend integration (removed for now)
-  const [range, setRange] = useState("30"); // days window (kept for future trend integration)
-  const [medicines, setMedicines] = useState([]);
-  const [loading, setLoading] = useState(false);
+
   const [todaySales, setTodaySales] = useState({
     totalAmount: 0,
     totalPurchaseAmount: 0,
     totalTransactions: 0,
   });
+
+  const [salesSummary, setSalesSummary] = useState({
+    totalAmount: 0,
+    totalTransactions: 0,
+  });
+
   const formatBirr = (v) =>
     typeof v !== "number" || !isFinite(v)
       ? "Br 0"
       : `Br ${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 
-  const load = useCallback(async () => {
+  const getBranchId = useCallback(async () => {
+    let branchId = "";
+    try {
+      const stored = localStorage.getItem("user");
+      if (stored) {
+        const u = JSON.parse(stored);
+        if (u.branch) branchId = u.branch._id || u.branch;
+        else if (Array.isArray(u.branches) && u.branches.length === 1) {
+          branchId = u.branches[0]._id || u.branches[0];
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    if (!branchId) {
+      try {
+        const res = await authFetch(`${API}/auth/me`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.user?.branch)
+            branchId = data.user.branch._id || data.user.branch;
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    return branchId;
+  }, []);
+
+  const loadAdmin = useCallback(async () => {
     setLoading(true);
     try {
       const res = await authFetch(`${API}/medicine?includeDeleted=true`);
@@ -77,7 +120,7 @@ const AdminDashboard = () => {
         const meds = data.medicines || [];
         setMedicines(meds);
         const now = Date.now();
-        const nearCut = now + 90 * 86400000; // 90 day near-expiry window
+        const nearCut = now + 90 * 86400000;
         const active = meds.filter((m) => !m.isDeleted);
         const expired = active.filter(
           (m) => new Date(m.expiryDate).getTime() < now
@@ -93,9 +136,6 @@ const AdminDashboard = () => {
           expired: expired.length,
           deleted: deleted.length,
         });
-        // Placeholder synthetic timeline (flat) until sales/prescriptions exist
-        // range retained for future trend calculations
-        // synthetic timeline omitted until sales data model exists
       }
     } catch {
       /* ignore */
@@ -103,12 +143,116 @@ const AdminDashboard = () => {
       setLoading(false);
     }
   }, []);
-  useEffect(() => {
-    load();
-  }, [load]);
 
-  // Load today's total sales across all branches
+  const loadEmployee = useCallback(async () => {
+    setLoading(true);
+    try {
+      const branchId = await getBranchId();
+      if (!branchId) {
+        setMedicines([]);
+        setStats({ total: 0, nearExpiry: 0, expired: 0, deleted: 0 });
+        setSalesSummary({ totalAmount: 0, totalTransactions: 0 });
+        setLoading(false);
+        return;
+      }
+      const res = await authFetch(
+        `${API}/inventory/branch/${branchId}/medicines`
+      );
+      const data = await res.json();
+      if (res.ok && data.success) {
+        const meds = data.medicines || [];
+        setMedicines(meds);
+        const now = Date.now();
+        const nearCut = now + 90 * 86400000;
+        const active = meds.filter((m) => !m.isDeleted && m.quantity > 0);
+        const expired = active.filter(
+          (m) => m.expiryDate && new Date(m.expiryDate).getTime() < now
+        );
+        const near = active.filter((m) => {
+          if (!m.expiryDate) return false;
+          const t = new Date(m.expiryDate).getTime();
+          return t >= now && t <= nearCut;
+        });
+        setStats({
+          total: active.length,
+          nearExpiry: near.length,
+          expired: expired.length,
+          deleted: 0,
+        });
+      } else {
+        setMedicines([]);
+        setStats({ total: 0, nearExpiry: 0, expired: 0, deleted: 0 });
+      }
+      let start, end;
+      if (range === "today") {
+        start = new Date();
+        start.setHours(0, 0, 0, 0);
+        end = new Date();
+        end.setHours(23, 59, 59, 999);
+      } else {
+        const days = Number(range) || 30;
+        end = new Date();
+        start = new Date(Date.now() - days * 86400000);
+      }
+      const toYMD = (d) =>
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
+          2,
+          "0"
+        )}-${String(d.getDate()).padStart(2, "0")}`;
+      const params = new URLSearchParams({
+        startDate: toYMD(start),
+        endDate: toYMD(end),
+      });
+      const salesRes = await authFetch(`${API}/sales/summary?${params}`);
+      const salesData = await salesRes.json();
+      if (salesRes.ok && salesData.success && salesData.summary) {
+        const totals = Object.values(salesData.summary).reduce(
+          (acc, s) => {
+            const subAmount =
+              typeof s.totalAmount === "number"
+                ? s.totalAmount
+                : Array.isArray(s.sales)
+                ? s.sales.reduce(
+                    (sum, x) =>
+                      sum + (Number(x.quantity) || 0) * (Number(x.price) || 0),
+                    0
+                  )
+                : 0;
+            const subTx =
+              typeof s.totalTransactions === "number"
+                ? s.totalTransactions
+                : Array.isArray(s.sales)
+                ? s.sales.length
+                : 0;
+            acc.totalAmount += subAmount;
+            acc.totalTransactions += subTx;
+            return acc;
+          },
+          { totalAmount: 0, totalTransactions: 0 }
+        );
+        setSalesSummary(totals);
+      } else {
+        setSalesSummary({ totalAmount: 0, totalTransactions: 0 });
+      }
+    } catch {
+      setMedicines([]);
+      setStats({ total: 0, nearExpiry: 0, expired: 0, deleted: 0 });
+      setSalesSummary({ totalAmount: 0, totalTransactions: 0 });
+    } finally {
+      setLoading(false);
+    }
+  }, [range, getBranchId]);
+
   useEffect(() => {
+    if (isAdmin) loadAdmin();
+  }, [isAdmin, loadAdmin]);
+
+  useEffect(() => {
+    if (isEmployee) loadEmployee();
+  }, [isEmployee, loadEmployee]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
     const fetchToday = async () => {
       try {
         const res = await authFetch(`${API}/sales/admin/today-total`);
@@ -119,14 +263,22 @@ const AdminDashboard = () => {
       }
     };
     fetchToday();
-    // refresh when window regains focus instead of polling
     const onFocus = () => fetchToday();
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
-  }, []);
+  }, [isAdmin]);
 
-  // Price metrics (derived from medicines)
   const priceStats = useMemo(() => {
+    if (!isAdmin)
+      return {
+        valueSell: 0,
+        valueCost: 0,
+        gross: 0,
+        gmPct: 0,
+        covSell: 0,
+        covCost: 0,
+        avgSell: 0,
+      };
     const meds = (medicines || []).filter((m) => !m.isDeleted);
     const getQty = (m) =>
       (m.remainingQuantity ??
@@ -160,7 +312,6 @@ const AdminDashboard = () => {
       totalUnits > 0 ? Math.round((sellUnits / totalUnits) * 100) : 0;
     const covCost =
       totalUnits > 0 ? Math.round((costUnits / totalUnits) * 100) : 0;
-    const avgSell = sellUnits > 0 ? valueSell / sellUnits : 0;
     return {
       valueSell,
       valueCost,
@@ -168,15 +319,13 @@ const AdminDashboard = () => {
       gmPct,
       covSell,
       covCost,
-      avgSell,
+      avgSell: sellUnits > 0 ? valueSell / sellUnits : 0,
     };
-  }, [medicines]);
+  }, [medicines, isAdmin]);
 
-  // metric card helper constants removed after refactor
-  const baseTotal = stats.total + stats.deleted;
+  const baseTotal = stats.total + (stats.deleted || 0);
   const pct = (num, den) => (den > 0 ? Math.round((num / den) * 100) : 0);
 
-  // If super admin -> render dedicated dashboard
   if (isSuper) {
     return (
       <div className="space-y-6">
@@ -223,10 +372,12 @@ const AdminDashboard = () => {
   }
 
   return (
-    <div className="space-y-10">
+    <div className={isEmployee ? "space-y-8 pb-4" : "space-y-10"}>
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Admin Dashboard</h1>
+          <h1 className="text-3xl font-bold tracking-tight">
+            {isAdmin ? "Admin Dashboard" : "Dashboard"}
+          </h1>
           <p className="text-white/60 text-sm mt-1">
             Real-time overview & trends of medicine status
           </p>
@@ -237,32 +388,47 @@ const AdminDashboard = () => {
             onChange={(e) => setRange(e.target.value)}
             className="px-3 py-2 rounded bg-white/10 border border-white/10 text-sm"
           >
+            {isEmployee && <option value="today">Today</option>}
             <option value="7">Last 7d</option>
             <option value="14">Last 14d</option>
             <option value="30">Last 30d</option>
             <option value="60">Last 60d</option>
           </select>
           <button
-            onClick={load}
+            onClick={isAdmin ? loadAdmin : loadEmployee}
             className="px-4 py-2 rounded bg-white/10 hover:bg-white/20 text-sm"
           >
             {loading ? "Loading..." : "Refresh"}
           </button>
         </div>
       </div>
-      {/* Metrics: single grid (2 rows x 4 cols on xl) */}
       <div className="grid grid-cols-2 md:grid-cols-2 xl:grid-cols-4 gap-4 md:gap-6">
+        {isEmployee && (
+          <MetricCard
+            icon={<BarChart3 className="w-6 h-6" />}
+            iconColor="slate"
+            value={ceilCurrency(salesSummary.totalAmount)}
+            label={
+              range === "today" ? "Sales (Today)" : `Sales (${range}d)`
+            }
+            percent={100}
+            subtitle={`${salesSummary.totalTransactions} transactions`}
+            onClick={() => navigate("/employee/sales/history")}
+          />
+        )}
         <MetricCard
           icon={<Package className="w-6 h-6" />}
           iconColor="emerald"
           value={stats.total}
           label="Active Medicines"
-          percent={pct(stats.total, baseTotal)}
+          percent={pct(stats.total, isAdmin ? baseTotal : stats.total || 1)}
           subtitle={`${pct(stats.expired, stats.total)}% expired, ${pct(
             stats.nearExpiry,
             stats.total
           )}% near`}
-          onClick={() => navigate("/admin/medicines")}
+          onClick={() =>
+            navigate(isAdmin ? "/admin/medicines" : "/employee/medicines")
+          }
         />
         <MetricCard
           icon={<Clock className="w-6 h-6" />}
@@ -271,7 +437,13 @@ const AdminDashboard = () => {
           label="Near Expiry (90d)"
           percent={pct(stats.nearExpiry, stats.total)}
           subtitle={`${pct(stats.nearExpiry, stats.total)}% of active`}
-          onClick={() => navigate("/admin/medicines/near-expiry")}
+          onClick={() =>
+            navigate(
+              isAdmin
+                ? "/admin/medicines/near-expiry"
+                : "/employee/medicines"
+            )
+          }
         />
         <MetricCard
           icon={<Skull className="w-6 h-6" />}
@@ -280,53 +452,68 @@ const AdminDashboard = () => {
           label="Expired"
           percent={pct(stats.expired, stats.total)}
           subtitle={`${pct(stats.expired, stats.total)}% of active`}
-          onClick={() => navigate("/admin/medicines/expired")}
+          onClick={() =>
+            navigate(
+              isAdmin ? "/admin/medicines/expired" : "/employee/medicines"
+            )
+          }
         />
-        <MetricCard
-          icon={<Trash2 className="w-6 h-6" />}
-          iconColor="slate"
-          value={stats.deleted}
-          label="In Trash"
-          percent={pct(stats.deleted, baseTotal)}
-          subtitle={`${pct(stats.deleted, baseTotal)}% of total incl. trash`}
-          onClick={() => navigate("/admin/medicines/trash")}
-        />
-        <MetricCard
-          icon={<DollarSign className="w-6 h-6" />}
-          iconColor="emerald"
-          value={formatBirr(todaySales.totalAmount)}
-          label="Today's Total Sales"
-          percent={0}
-          subtitle={`${todaySales.totalTransactions || 0} transactions`}
-          onClick={() => navigate("/admin/sales")}
-        />
-        {/* Price metrics moved into the same grid */}
-        <MetricCard
-          icon={<DollarSign className="w-6 h-6" />}
-          iconColor="emerald"
-          value={formatBirr(priceStats.valueSell)}
-          label="Potential Inventory Value"
-          percent={priceStats.covSell}
-          subtitle={`${priceStats.covSell}% units priced (sell)`}
-        />
-        <MetricCard
-          icon={<Coins className="w-6 h-6" />}
-          iconColor="slate"
-          value={formatBirr(priceStats.valueCost)}
-          label="Inventory Cost (Est.)"
-          percent={priceStats.covCost}
-          subtitle={`${priceStats.covCost}% units priced (cost)`}
-        />
-        <MetricCard
-          icon={<Coins className="w-6 h-6" />}
-          iconColor="slate"
-          value={formatBirr(todaySales.totalPurchaseAmount)}
-          label="Today's Purchase Cost"
-          percent={0}
-          subtitle="Cost baseline for sold items"
-        />
+        {isAdmin && (
+          <MetricCard
+            icon={<Trash2 className="w-6 h-6" />}
+            iconColor="slate"
+            value={stats.deleted}
+            label="In Trash"
+            percent={pct(stats.deleted, baseTotal)}
+            subtitle={`${pct(
+              stats.deleted,
+              baseTotal
+            )}% of total incl. trash`}
+            onClick={() => navigate("/admin/medicines/trash")}
+          />
+        )}
+        {isAdmin && (
+          <MetricCard
+            icon={<DollarSign className="w-6 h-6" />}
+            iconColor="emerald"
+            value={formatBirr(todaySales.totalAmount)}
+            label="Today's Total Sales"
+            percent={0}
+            subtitle={`${todaySales.totalTransactions || 0} transactions`}
+            onClick={() => navigate("/admin/sales")}
+          />
+        )}
+        {isAdmin && (
+          <MetricCard
+            icon={<DollarSign className="w-6 h-6" />}
+            iconColor="emerald"
+            value={formatBirr(priceStats.valueSell)}
+            label="Potential Inventory Value"
+            percent={priceStats.covSell}
+            subtitle={`${priceStats.covSell}% units priced (sell)`}
+          />
+        )}
+        {isAdmin && (
+          <MetricCard
+            icon={<Coins className="w-6 h-6" />}
+            iconColor="slate"
+            value={formatBirr(priceStats.valueCost)}
+            label="Inventory Cost (Est.)"
+            percent={priceStats.covCost}
+            subtitle={`${priceStats.covCost}% units priced (cost)`}
+          />
+        )}
+        {isAdmin && (
+          <MetricCard
+            icon={<Coins className="w-6 h-6" />}
+            iconColor="slate"
+            value={formatBirr(todaySales.totalPurchaseAmount)}
+            label="Today's Purchase Cost"
+            percent={0}
+            subtitle="Cost baseline for sold items"
+          />
+        )}
       </div>
-      {/* Charts (side by side on desktop) */}
       <div className="grid gap-6 md:grid-cols-2">
         <div className="bg-white/10 border border-white/10 rounded-xl p-6 backdrop-blur-sm flex flex-col gap-5">
           <div className="flex items-center justify-between">
@@ -380,7 +567,6 @@ const LineChart = ({ data }) => {
   return (
     <div className="overflow-x-auto">
       <svg width={w} height={h} className="max-w-full">
-        {/* grid lines */}
         {Array.from({ length: 5 }).map((_, i) => {
           const y = pad + ((h - pad * 2) / 4) * i;
           return (
@@ -401,7 +587,6 @@ const LineChart = ({ data }) => {
         <path d={pathActive} fill="none" stroke="#34d399" strokeWidth={2} />
         <path d={pathNear} fill="none" stroke="#fbbf24" strokeWidth={2} />
         <path d={pathExpired} fill="none" stroke="#fb7185" strokeWidth={2} />
-        {/* points */}
         {data.map((d, i) => (
           <g key={i}>
             <circle cx={toX(i)} cy={toY(d.active)} r={3} fill="#34d399" />
@@ -409,7 +594,6 @@ const LineChart = ({ data }) => {
             <circle cx={toX(i)} cy={toY(d.expired)} r={3} fill="#fb7185" />
           </g>
         ))}
-        {/* x axis labels (sparse) */}
         {data.map((d, i) =>
           i % Math.ceil(data.length / 6) === 0 ? (
             <text
@@ -427,7 +611,6 @@ const LineChart = ({ data }) => {
             </text>
           ) : null
         )}
-        {/* y axis labels */}
         {Array.from({ length: 5 }).map((_, i) => {
           const val = Math.round((max / 4) * i);
           return (
@@ -454,7 +637,6 @@ const Legend = ({ color, label }) => (
   </div>
 );
 
-// Reusable metric card with radial percent
 const MetricCard = ({
   icon,
   iconColor,
@@ -556,7 +738,6 @@ const MetricCard = ({
   );
 };
 
-// Category aggregated horizontal bars (alphabetical)
 const CategoryBars = ({ medicines }) => {
   const counts = {};
   (medicines || [])
@@ -601,7 +782,6 @@ const CategoryBars = ({ medicines }) => {
   );
 };
 
-// Category donut (simple ring composed of arcs)
 const CategoryDonut = ({ medicines }) => {
   const counts = {};
   (medicines || [])
@@ -699,4 +879,4 @@ const CategoryDonut = ({ medicines }) => {
   );
 };
 
-export default AdminDashboard;
+export default Dashboard;

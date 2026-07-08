@@ -8,13 +8,18 @@ import medicineRouter from "./routes/medicine.route.js";
 import inventoryRouter from "./routes/inventory.route.js";
 import locationRouter from "./routes/location.route.js";
 import supplierRouter from "./routes/supplier.route.js";
-import branchRouter from "./routes/branch.route.js";
 import chatRouter from "./routes/chat.route.js";
+import saleRouter from "./routes/sale.route.js";
+import superAdminRouter from "./routes/superadmin.route.js";
+import maintenanceRouter from "./routes/maintenance.route.js";
+import exportRouter from "./routes/export.route.js";
+import syncRouter from "./routes/sync.route.js";
+import Pharmacy from "./models/pharmacy.model.js";
 import cookieParser from "cookie-parser";
 import path from "path";
 import Branch from "./models/branch.model.js";
 import Store from "./models/store.model.js";
-import Medicine from "./models/medicine.model.js"; // for migration / index maintenance
+import Medicine from "./models/medicine.model.js";
 
 config();
 
@@ -319,18 +324,11 @@ app.use("/backend/inventory", inventoryRouter);
 app.use("/backend/location", locationRouter);
 app.use("/backend/user", userRouter);
 app.use("/backend/supplier", supplierRouter);
-app.use("/backend/branch", branchRouter);
 app.use("/backend/chat", chatRouter);
-import saleRouter from "./routes/sale.route.js";
 app.use("/backend/sales", saleRouter);
-import superAdminRouter from "./routes/superadmin.route.js";
 app.use("/backend/superadmin", superAdminRouter);
-import maintenanceRouter from "./routes/maintenance.route.js";
 app.use("/backend/maintenance", maintenanceRouter);
-import Pharmacy from "./models/pharmacy.model.js";
-import exportRouter from "./routes/export.route.js";
 app.use("/backend/export", exportRouter);
-import syncRouter from "./routes/sync.route.js";
 app.use("/backend/sync", syncRouter);
 
 // Temporary migration route (super admin only) to backfill pharmacy

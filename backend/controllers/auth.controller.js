@@ -18,28 +18,14 @@ export const signup = async (req, res, next) => {
   try {
     await newUser.save();
     const { password: _p, ...userSafe } = newUser._doc;
-    res.status(201).json({
-      success: true,
-      message: "User created successfully",
-      user: userSafe,
-    });
+    res.status(201).json({ success: true, message: "User created successfully", user: userSafe });
   } catch (error) {
-    // Duplicate key error (Mongo / Mongoose)
     if (error.code === 11000) {
       const field = Object.keys(error.keyPattern || {})[0] || "field";
-      return res.status(409).json({
-        success: false,
-        statusCode: 409,
-        message: `${field} already exists`,
-      });
+      return next(errorHandler(409, `${field} already exists`));
     }
-    // Mongoose validation error
     if (error.name === "ValidationError") {
-      return res.status(400).json({
-        success: false,
-        statusCode: 400,
-        message: error.message,
-      });
+      return next(errorHandler(400, error.message));
     }
     next(error);
   }
@@ -108,27 +94,22 @@ export const signin = async (req, res, next) => {
 export const signout = async (req, res, next) => {
   try {
     res.clearCookie("access_token");
-    res.status(200).json("User has logged out!");
+    res.status(200).json({ success: true, message: "User has logged out!" });
   } catch (error) {
     next(error);
   }
 };
 
-// Return the authenticated user's profile (including branch)
 export const me = async (req, res, next) => {
   try {
     const userId = req.user?.id;
     if (!userId || !Types.ObjectId.isValid(userId)) {
-      return res.status(401).json({ success: false, message: "Unauthorized" });
+      return next(errorHandler(401, "Unauthorized"));
     }
     const user = await User.findById(userId).populate("branch");
-    if (!user) {
-      return res
-        .status(404)
-        .json({ success: false, message: "User not found" });
-    }
+    if (!user) return next(errorHandler(404, "User not found"));
     const { password: _p, ...safe } = user._doc;
-    res.status(200).json({ success: true, user: safe });
+    res.status(200).json({ success: true, user: safe, pharmacy: user.pharmacy });
   } catch (error) {
     next(error);
   }

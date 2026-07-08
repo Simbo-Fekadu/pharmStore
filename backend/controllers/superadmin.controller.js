@@ -6,7 +6,6 @@ import Supplier from "../models/supplier.model.js";
 import Branch from "../models/branch.model.js";
 import Request from "../models/request.model.js";
 import { StockBalance, StockLedger } from "../models/inventory.model.js";
-import Inventory from "../models/inventory.model.js";
 import Pharmacy from "../models/pharmacy.model.js";
 
 // Audit log is a stub for now; later you can persist to a collection
@@ -273,34 +272,14 @@ export const branchesOverview = async (_req, res, next) => {
     const now = new Date();
     const nearCut = new Date(Date.now() + 90 * 86400000);
 
-    // Aggregate inventory by branch
-    const invAgg = await Inventory.aggregate([
-      { $match: { locationType: "Branch", locationId: { $in: branchIds } } },
+    // Aggregate stock balance by branch
+    const invAgg = await StockBalance.aggregate([
+      { $match: { locationId: { $in: branchIds } } },
       {
         $group: {
           _id: "$locationId",
-          totalUnits: { $sum: { $ifNull: ["$quantity", 0] } },
+          totalUnits: { $sum: { $ifNull: ["$onHandQty", 0] } },
           itemCount: { $sum: 1 },
-          expired: {
-            $sum: {
-              $cond: [{ $lt: ["$expiryDate", now] }, 1, 0],
-            },
-          },
-          nearExpiry: {
-            $sum: {
-              $cond: [
-                {
-                  $and: [
-                    { $gte: ["$expiryDate", now] },
-                    { $lte: ["$expiryDate", nearCut] },
-                  ],
-                },
-                1,
-                0,
-              ],
-            },
-          },
-          latestInventoryUpdate: { $max: "$updatedAt" },
         },
       },
     ]);
@@ -347,11 +326,8 @@ export const branchDetailOverview = async (req, res, next) => {
     if (!branch) return next(errorHandler(404, "Branch not found"));
     const now = new Date();
     const nearCut = new Date(Date.now() + 90 * 86400000);
-    const invDocs = await Inventory.find({
-      locationType: "Branch",
-      locationId: id,
-    })
-      .populate("medicine", "medicineName category expiryDate")
+    const invDocs = await StockBalance.find({ locationId: id })
+      .populate("medicineId", "medicineName category expiryDate")
       .lean();
 
     let totalUnits = 0;
@@ -359,9 +335,9 @@ export const branchDetailOverview = async (req, res, next) => {
     let nearExpiry = 0;
     const items = [];
     for (const d of invDocs) {
-      const qty = d.quantity || 0;
+      const qty = d.onHandQty || 0;
       totalUnits += qty;
-      const exp = d.expiryDate || d.medicine?.expiryDate;
+      const exp = d.medicineId?.expiryDate;
       if (exp) {
         const t = new Date(exp).getTime();
         if (t < now.getTime()) expired++;
@@ -369,8 +345,8 @@ export const branchDetailOverview = async (req, res, next) => {
       }
       items.push({
         id: d._id,
-        medicine: d.medicine?.medicineName || "Unknown",
-        category: d.medicine?.category,
+        medicine: d.medicineId?.medicineName || "Unknown",
+        category: d.medicineId?.category,
         quantity: qty,
         expiryDate: exp,
       });

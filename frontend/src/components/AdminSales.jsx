@@ -1,10 +1,11 @@
 import { useEffect, useState, useCallback } from "react";
 import { Calendar, Search } from "lucide-react";
-import { getApiBase } from "../api/base";
+import { API_BASE } from "../api/base";
 import { authFetch } from "../api/authFetch";
+import { usePharmacy } from "../hooks/usePharmacy";
 import { ceilCurrency, ceilOrDash } from "../utils/number";
 
-const API = getApiBase() + "/backend";
+const API = API_BASE;
 
 const AdminSales = () => {
   const [startDate, setStartDate] = useState(() =>
@@ -29,35 +30,16 @@ const AdminSales = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [role, setRole] = useState(null);
-  const [pharmacies, setPharmacies] = useState([]);
-  const [pharmacyId, setPharmacyId] = useState("");
-
   useEffect(() => {
     setRole(localStorage.getItem("role"));
   }, []);
 
-  useEffect(() => {
-    const fetchPharmacies = async () => {
-      if (role !== "super_admin") return;
-      try {
-        const res = await authFetch(`${API}/superadmin/pharmacies`);
-        const data = await res.json();
-        if (res.ok && data.success && Array.isArray(data.pharmacies)) {
-          setPharmacies(data.pharmacies);
-          if (!pharmacyId && data.pharmacies[0]?._id)
-            setPharmacyId(data.pharmacies[0]._id);
-        }
-      } catch {
-        /* ignore */
-      }
-    };
-    fetchPharmacies();
-  }, [role, pharmacyId]);
+  const { pharmacies, selectedPharmacyId, setSelectedPharmacyId } = usePharmacy();
 
   const loadBranchesAndUsers = useCallback(async () => {
     try {
       const qs =
-        role === "super_admin" && pharmacyId ? `?pharmacyId=${pharmacyId}` : "";
+        role === "super_admin" && selectedPharmacyId ? `?selectedPharmacyId=${selectedPharmacyId}` : "";
       const [bRes, eRes] = await Promise.all([
         authFetch(`${API}/location/branch${qs}`),
         authFetch(`${API}/user${qs}`),
@@ -74,7 +56,7 @@ const AdminSales = () => {
     } catch {
       /* ignore */
     }
-  }, [role, pharmacyId]);
+  }, [role, selectedPharmacyId]);
 
   useEffect(() => {
     loadBranchesAndUsers();
@@ -92,8 +74,8 @@ const AdminSales = () => {
       });
       if (branchId) params.set("branchId", branchId);
       if (employeeId) params.set("employeeId", employeeId);
-      if (role === "super_admin" && pharmacyId)
-        params.set("pharmacyId", pharmacyId);
+      if (role === "super_admin" && selectedPharmacyId)
+        params.set("selectedPharmacyId", selectedPharmacyId);
       const res = await authFetch(`${API}/sales/admin/list?${params}`);
       const data = await res.json();
       if (res.ok && data?.success) {
@@ -119,7 +101,7 @@ const AdminSales = () => {
     branchId,
     employeeId,
     role,
-    pharmacyId,
+    selectedPharmacyId,
   ]);
 
   useEffect(() => {
@@ -149,9 +131,9 @@ const AdminSales = () => {
             <div className="text-sm flex items-center gap-2">
               <span className="text-muted-foreground">Pharmacy</span>
               <select
-                value={pharmacyId}
+                value={selectedPharmacyId}
                 onChange={(e) => {
-                  setPharmacyId(e.target.value);
+                  setSelectedPharmacyId(e.target.value);
                   setPage(1);
                 }}
                 className="px-3 py-2 rounded bg-muted border border-border text-sm text-foreground"

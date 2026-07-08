@@ -1,23 +1,31 @@
 import { useEffect, useState } from "react";
 import { authFetch } from "../api/authFetch";
-import { Skull } from "lucide-react";
-import { getApiBase } from "../api/base";
-const API = getApiBase() + "/backend";
+import { Clock, Skull } from "lucide-react";
+import { API_BASE } from "../api/base";
 
-const AdminExpired = () => {
+const daysThreshold = 90;
+
+const MedicineExpiry = ({ type }) => {
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(false);
+  const isExpired = type === "expired";
 
   const load = async () => {
     setLoading(true);
     try {
-      const res = await authFetch(`${API}/medicine`);
+      const res = await authFetch(`${API_BASE}/medicine`);
       const data = await res.json();
       if (res.ok && data.success) {
         const now = Date.now();
-        const filtered = (data.medicines || []).filter(
-          (m) => !m.isDeleted && new Date(m.expiryDate).getTime() < now
-        );
+        const filtered = (data.medicines || []).filter((m) => {
+          if (m.isDeleted) return false;
+          const expTime = new Date(m.expiryDate).getTime();
+          if (isExpired) {
+            return expTime < now;
+          }
+          const cutoff = now + daysThreshold * 86400000;
+          return expTime <= cutoff && expTime >= now;
+        });
         setList(filtered);
       }
     } catch {
@@ -28,13 +36,20 @@ const AdminExpired = () => {
   };
   useEffect(() => {
     load();
-  }, []);
+  }, [type]);
+
+  const Icon = isExpired ? Skull : Clock;
+  const title = isExpired ? "Expired Medicines" : "Near Expiry Medicines";
+  const subtitle = isExpired ? "Expired" : `Expiring within ${daysThreshold} days`;
+  const emptyMsg = isExpired ? "No expired medicines" : "No medicines near expiry";
+  const dateLabel = isExpired ? "Expired On" : "Expiry";
+  const daysLabel = isExpired ? "Days Ago" : "Days Left";
 
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Skull className="w-6 h-6" /> Expired Medicines
+          <Icon className="w-6 h-6" /> {title}
         </h1>
         <button
           onClick={load}
@@ -45,26 +60,28 @@ const AdminExpired = () => {
       </div>
       <div className="bg-white/10 rounded-xl p-6 border border-white/10 backdrop-blur overflow-x-auto">
         <h2 className="font-semibold mb-4 tracking-wide text-sm uppercase text-white/70">
-          Expired
+          {subtitle}
         </h2>
         {loading ? (
           <div className="text-sm text-white/70">Loading...</div>
         ) : list.length === 0 ? (
-          <div className="text-sm text-white/60">No expired medicines</div>
+          <div className="text-sm text-white/60">{emptyMsg}</div>
         ) : (
           <table className="w-full text-xs md:text-sm">
             <thead>
               <tr className="text-left text-white/70 bg-white/5">
                 <th className="py-2 pr-3">Name</th>
                 <th className="py-2 pr-3">Batch</th>
-                <th className="py-2 pr-3">Expired On</th>
-                <th className="py-2 pr-3">Days Ago</th>
+                <th className="py-2 pr-3">{dateLabel}</th>
+                <th className="py-2 pr-3">{daysLabel}</th>
               </tr>
             </thead>
             <tbody>
               {list.map((m) => {
                 const exp = new Date(m.expiryDate).getTime();
-                const daysAgo = Math.ceil((Date.now() - exp) / 86400000);
+                const diff = isExpired
+                  ? Math.ceil((Date.now() - exp) / 86400000)
+                  : Math.max(0, Math.ceil((exp - Date.now()) / 86400000));
                 return (
                   <tr
                     key={m._id}
@@ -79,7 +96,7 @@ const AdminExpired = () => {
                     <td className="py-1.5 pr-3 text-white/70">
                       {new Date(m.expiryDate).toLocaleDateString()}
                     </td>
-                    <td className="py-1.5 pr-3 text-white/70">{daysAgo}</td>
+                    <td className="py-1.5 pr-3 text-white/70">{diff}</td>
                   </tr>
                 );
               })}
@@ -91,4 +108,4 @@ const AdminExpired = () => {
   );
 };
 
-export default AdminExpired;
+export default MedicineExpiry;

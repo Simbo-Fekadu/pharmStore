@@ -13,12 +13,14 @@ import {
   FileText,
 } from "lucide-react";
 
-import { getApiBase } from "../api/base";
+import { API_BASE } from "../api/base";
 import { ceilCurrency, ceilOrDash } from "../utils/number";
+import { sortByRecent, formatBirr, sellingValue, displayQuantity } from "../utils/medicine";
 import { authFetch } from "../api/authFetch";
 import useToast from "../hooks/useToast";
 import useConfirm from "../hooks/useConfirm";
-const API = getApiBase() + "/backend";
+import { usePharmacy } from "../hooks/usePharmacy";
+const API = API_BASE;
 
 const AdminMedicines = () => {
   const toast = useToast();
@@ -26,35 +28,7 @@ const AdminMedicines = () => {
   const isElectron = typeof window !== "undefined" && !!window.desktop;
   const cfg = isElectron ? window.desktop?.config || {} : {};
   const useRealm = isElectron && cfg?.dataMode === "realm" && cfg?.realm?.appId;
-  // Helper utilities
-  const sortByRecent = (arr) =>
-    (arr || []).slice().sort((a, b) => {
-      const aT = new Date(a?.updatedAt || a?.createdAt || 0).getTime();
-      const bT = new Date(b?.updatedAt || b?.createdAt || 0).getTime();
-      return bT - aT;
-    });
-  const formatBirr = (v) => ceilCurrency(v);
-  const sellingValue = (m) => {
-    const pp = Number(m.purchasePrice);
-    const sp = Number(m.sellingPrice);
-    if (!isFinite(pp)) return sp;
-    if (!isFinite(sp) || sp <= 3) {
-      const factor =
-        isFinite(sp) && sp >= 1 ? sp : m.category === "COSMETICS" ? 1.35 : 1.25;
-      return Math.round(pp * factor * 100) / 100;
-    }
-    return sp;
-  };
-  const displayQuantity = (m) => {
-    const total =
-      m.remainingQuantity ??
-      m.initialQuantity ??
-      m.liveQuantity ??
-      m.centralNetQuantity ??
-      m.quantity ??
-      0;
-    return m.packSize ? Math.floor(total / m.packSize) : total;
-  };
+
   const displayPrice = (m) => {
     if (m.sellingPriceBase) {
       return `${formatBirr(m.sellingPriceBase)}/${m.baseUnit || "unit"}`;
@@ -94,9 +68,6 @@ const AdminMedicines = () => {
   const [submitting, setSubmitting] = useState(false);
   const [role, setRole] = useState(null);
   const [exporting, setExporting] = useState(false);
-  // Super admin pharmacy selector
-  const [pharmacies, setPharmacies] = useState([]);
-  const [pharmacyId, setPharmacyId] = useState("");
   const isAdminLike = role === "admin" || role === "super_admin";
   // Selection state for bulk actions
   const [selected, setSelected] = useState([]);
@@ -118,12 +89,12 @@ const AdminMedicines = () => {
     setExporting(true);
     try {
       const qs =
-        pharmacyId && role === "super_admin" ? `?pharmacyId=${pharmacyId}` : "";
+        selectedPharmacyId && role === "super_admin" ? `?selectedPharmacyId=${selectedPharmacyId}` : "";
       const res = await authFetch(`${API}/medicine/export/xlsx${qs}`);
       if (!res.ok) {
         if (res.status === 404) {
           try {
-            const routeRes = await authFetch(`${getApiBase()}/backend/_routes`);
+            const routeRes = await authFetch(`${API_BASE}/_routes`);
             if (routeRes.ok) {
               const json = await routeRes.json();
               const found = (json.routes || []).some(
@@ -388,8 +359,8 @@ const AdminMedicines = () => {
           centralNet: "true",
           initialCurrent: "true",
         });
-        if (role === "super_admin" && pharmacyId)
-          qs.set("pharmacyId", pharmacyId);
+        if (role === "super_admin" && selectedPharmacyId)
+          qs.set("selectedPharmacyId", selectedPharmacyId);
         const res = await authFetch(`${API}/medicine?${qs.toString()}`);
         const data = await res.json();
         if (res.ok && data.success) setList(sortByRecent(data.medicines));
@@ -400,31 +371,13 @@ const AdminMedicines = () => {
     } finally {
       setLoading(false);
     }
-  }, [useRealm, role, pharmacyId]);
+  }, [useRealm, role, selectedPharmacyId]);
   useEffect(() => {
-    // set role first so we know whether to include pharmacyId
+    // set role first so we know whether to include selectedPharmacyId
     const r = localStorage.getItem("role");
     setRole(r);
   }, []);
-
-  // Load pharmacies for super_admin
-  useEffect(() => {
-    const fetchPharmacies = async () => {
-      if (role !== "super_admin") return;
-      try {
-        const res = await authFetch(`${API}/superadmin/pharmacies`);
-        const data = await res.json();
-        if (res.ok && data.success && Array.isArray(data.pharmacies)) {
-          setPharmacies(data.pharmacies);
-          if (!pharmacyId && data.pharmacies[0]?._id)
-            setPharmacyId(data.pharmacies[0]._id);
-        }
-      } catch {
-        // ignore
-      }
-    };
-    fetchPharmacies();
-  }, [role, pharmacyId]);
+  const { pharmacies, selectedPharmacyId, setSelectedPharmacyId } = usePharmacy();
 
   // Load medicines when role/pharmacy changes
   useEffect(() => {
@@ -540,8 +493,8 @@ const AdminMedicines = () => {
         toast.success("Moved to trash");
       } else {
         const qs =
-          pharmacyId && role === "super_admin"
-            ? `?pharmacyId=${pharmacyId}`
+          selectedPharmacyId && role === "super_admin"
+            ? `?selectedPharmacyId=${selectedPharmacyId}`
             : "";
         const res = await authFetch(`${API}/medicine/${id}${qs}`, {
           method: "DELETE",
@@ -636,8 +589,8 @@ const AdminMedicines = () => {
         for (const id of selected) {
           try {
             const qs =
-              pharmacyId && role === "super_admin"
-                ? `?pharmacyId=${pharmacyId}`
+              selectedPharmacyId && role === "super_admin"
+                ? `?selectedPharmacyId=${selectedPharmacyId}`
                 : "";
             const res = await authFetch(`${API}/medicine/${id}${qs}`, {
               method: "DELETE",
@@ -721,7 +674,7 @@ const AdminMedicines = () => {
             : Number(editForm.sellingPrice),
       };
       const qs =
-        pharmacyId && role === "super_admin" ? `?pharmacyId=${pharmacyId}` : "";
+        selectedPharmacyId && role === "super_admin" ? `?selectedPharmacyId=${selectedPharmacyId}` : "";
       const res = await authFetch(`${API}/medicine/${m._id}${qs}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -812,8 +765,8 @@ const AdminMedicines = () => {
                           Pharmacy
                         </span>
                         <select
-                          value={pharmacyId}
-                          onChange={(e) => setPharmacyId(e.target.value)}
+                          value={selectedPharmacyId}
+                          onChange={(e) => setSelectedPharmacyId(e.target.value)}
                           className="px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent w-full sm:w-auto"
                         >
                           {pharmacies.map((p) => (

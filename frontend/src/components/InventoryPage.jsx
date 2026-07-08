@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import InventoryForm from "./InventoryForm";
-import { getApiBase } from "../api/base";
+import { API_BASE } from "../api/base";
 import { authFetch } from "../api/authFetch";
 
 const InventoryPage = () => {
@@ -16,7 +16,7 @@ const InventoryPage = () => {
     try {
       const params = new URLSearchParams({ locationType, locationId });
       const res = await authFetch(
-        `${getApiBase()}/backend/inventory?${params.toString()}`
+        `${API_BASE}/inventory?${params.toString()}`
       );
       const data = await res.json();
       if (res.ok && data.success) {

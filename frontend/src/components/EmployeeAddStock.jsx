@@ -1,10 +1,10 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { getApiBase } from "../api/base";
+import { API_BASE } from "../api/base";
 import { authFetch } from "../api/authFetch";
 import useToast from "../hooks/useToast";
 import { Search, Plus, Trash2, AlertCircle } from "lucide-react";
 
-const API = getApiBase() + "/backend";
+const API = API_BASE;
 
 // Employee self-service add stock UI (single + batch)
 // Utilizes endpoints: POST /inventory/branch/add-self and /inventory/branch/add-self/batch

@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { Calendar, Filter, Search } from "lucide-react";
-import { getApiBase } from "../api/base";
+import { API_BASE } from "../api/base";
 import { authFetch } from "../api/authFetch";
 import { ceilCurrency, ceilOrDash } from "../utils/number";
 
-const API = getApiBase() + "/backend";
+const API = API_BASE;
 
 // Shows logged-in employee's sales for a date range, paginated (15/page)
 const EmployeeSalesHistory = () => {
