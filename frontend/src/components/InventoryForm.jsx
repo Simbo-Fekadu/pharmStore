@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
-import { getApiBase } from "../api/base";
+import { API_BASE } from "../api/base";
 import { authFetch } from "../api/authFetch"; // Importing authFetch for API calls
 
-const API = `${getApiBase()}/backend`;
+const API = API_BASE;
 
 const initialForm = {
   medicineId: "",
