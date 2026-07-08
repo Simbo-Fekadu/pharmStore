@@ -2,11 +2,9 @@ import User from "../models/user.model.js";
 import bcrypt from "bcryptjs";
 import errorHandler from "../utils/error.js";
 
-// Get all users
-export const getUsers = async (req, res) => {
+export const getUsers = async (req, res, next) => {
   try {
     const q = {};
-    // Super admin sees all by default, but can scope via ?pharmacyId
     if (req.user?.role !== "super_admin") {
       if (req.user?.pharmacy) q.pharmacy = req.user.pharmacy;
     } else if (req.query?.pharmacyId) {
@@ -15,135 +13,91 @@ export const getUsers = async (req, res) => {
     const users = await User.find(q).populate("branch");
     res.status(200).json({ success: true, users });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+    next(errorHandler(400, error.message));
   }
 };
 
-// Get user by ID
-export const getUser = async (req, res) => {
+export const getUser = async (req, res, next) => {
   try {
     const user = await User.findById(req.params.id).populate("branch");
-    if (!user)
-      return res
-        .status(404)
-        .json({ success: false, message: "User not found" });
+    if (!user) return next(errorHandler(404, "User not found"));
     res.status(200).json({ success: true, user });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+    next(errorHandler(400, error.message));
   }
 };
 
-// Update user
 export const updateUser = async (req, res, next) => {
   try {
-    // Whitelist allowed fields to prevent mass assignment
-    const allowedFields = [
-      "username",
-      "email",
-      "password",
-      "role",
-      "branch",
-    ];
+    const allowedFields = ["username", "email", "password", "role", "branch"];
     const update = {};
     for (const field of allowedFields) {
       if (req.body[field] !== undefined) update[field] = req.body[field];
     }
-    // Prevent role escalation by non-admin (should be enforced by middleware too)
     if (update.role && !["admin", "super_admin"].includes(req.user.role)) {
       return next(errorHandler(403, "Cannot change role"));
     }
-    // Never allow setting super_admin via API
     if (update.role === "super_admin") {
       return next(errorHandler(403, "Cannot assign super_admin role"));
     }
-    // If password provided, hash it
     if (update.password) {
       update.password = bcrypt.hashSync(update.password, 10);
     }
-    const user = await User.findByIdAndUpdate(req.params.id, update, {
-      new: true,
-    }).populate("branch");
-    if (!user)
-      return res
-        .status(404)
-        .json({ success: false, message: "User not found" });
-    res
-      .status(200)
-      .json({ success: true, message: "User updated successfully", user });
+    const user = await User.findByIdAndUpdate(req.params.id, update, { new: true }).populate("branch");
+    if (!user) return next(errorHandler(404, "User not found"));
+    res.status(200).json({ success: true, message: "User updated successfully", user });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+    next(errorHandler(400, error.message));
   }
 };
 
-// Delete user
 export const deleteUser = async (req, res, next) => {
   try {
     const user = await User.findById(req.params.id);
-    if (!user)
-      return res
-        .status(404)
-        .json({ success: false, message: "User not found" });
-    // Prevent deletion of admins by non-admins and forbid deleting super admins here
+    if (!user) return next(errorHandler(404, "User not found"));
     if (user.role === "super_admin") {
-      return next(
-        errorHandler(403, "Cannot delete super admin via this route")
-      );
+      return next(errorHandler(403, "Cannot delete super admin via this route"));
     }
-    if (
-      user.role === "admin" &&
-      !["admin", "super_admin"].includes(req.user.role)
-    ) {
+    if (user.role === "admin" && !["admin", "super_admin"].includes(req.user.role)) {
       return next(errorHandler(403, "Cannot delete admin"));
     }
     await User.deleteOne({ _id: user._id });
-    res
-      .status(200)
-      .json({ success: true, message: "User deleted successfully" });
+    res.status(200).json({ success: true, message: "User deleted successfully" });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+    next(errorHandler(400, error.message));
   }
 };
 
-export const createEmployee = async (req, res) => {
+export const createEmployee = async (req, res, next) => {
   try {
     const { username, email, password, branch } = req.body;
-    if (!username || !email || !password) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Missing fields" });
-    }
+    if (!username || !email || !password) return next(errorHandler(400, "Missing fields"));
     const hashed = bcrypt.hashSync(password, 10);
-    const user = new User({
+    const user = await User.create({
       username,
       email,
       password: hashed,
-      role: "employee", // cannot create super_admin here
+      role: "employee",
       branch: branch || undefined,
       pharmacy: req.user?.pharmacy || undefined,
     });
-    await user.save();
     const { password: _p, ...safe } = user._doc;
-    res
-      .status(201)
-      .json({ success: true, message: "Employee created", user: safe });
+    res.status(201).json({ success: true, message: "Employee created", user: safe });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+    next(errorHandler(400, error.message));
   }
 };
 
-// List employees in current user's branch (accessible to any authenticated user)
-export const listMyBranchEmployees = async (req, res) => {
+export const listMyBranchEmployees = async (req, res, next) => {
   try {
     const branchId = req.user?.branch;
-    if (!branchId) {
-      return res.status(200).json({ success: true, users: [] });
-    }
+    if (!branchId) return res.status(200).json({ success: true, users: [] });
     const users = await User.find({
       branch: branchId,
       role: { $in: ["employee", "inventory_manager"] },
     }).select("_id username email role branch");
     res.status(200).json({ success: true, users });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+    next(errorHandler(400, error.message));
   }
 };

@@ -1,140 +1,107 @@
 import Branch from "../models/branch.model.js";
 import Store from "../models/store.model.js";
+import errorHandler from "../utils/error.js";
 
-// Branch CRUD
-export const createBranch = async (req, res) => {
+export const createBranch = async (req, res, next) => {
   try {
-    const branch = new Branch({ ...req.body, pharmacy: req.pharmacyId });
-    await branch.save();
+    const branch = await Branch.create({ ...req.body, pharmacy: req.pharmacyId });
     res.status(201).json({ success: true, message: "Branch created", branch });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+    next(errorHandler(400, error.message));
   }
 };
 
-export const getBranches = async (req, res) => {
+export const getBranches = async (req, res, next) => {
   try {
     const branches = await Branch.find({ pharmacy: req.pharmacyId });
-    res.status(200).json(branches);
+    res.status(200).json({ success: true, branches });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+    next(errorHandler(400, error.message));
   }
 };
 
-export const getBranch = async (req, res) => {
+export const getBranch = async (req, res, next) => {
   try {
-    const branch = await Branch.findOne({
-      _id: req.params.id,
-      pharmacy: req.pharmacyId,
-    });
-    if (!branch)
-      return res
-        .status(404)
-        .json({ success: false, message: "Branch not found" });
+    const branch = await Branch.findOne({ _id: req.params.id, pharmacy: req.pharmacyId });
+    if (!branch) return next(errorHandler(404, "Branch not found"));
     res.status(200).json({ success: true, branch });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+    next(errorHandler(400, error.message));
   }
 };
 
-export const updateBranch = async (req, res) => {
+export const updateBranch = async (req, res, next) => {
   try {
     const branch = await Branch.findOneAndUpdate(
       { _id: req.params.id, pharmacy: req.pharmacyId },
       req.body,
       { new: true }
     );
-    if (!branch)
-      return res
-        .status(404)
-        .json({ success: false, message: "Branch not found" });
+    if (!branch) return next(errorHandler(404, "Branch not found"));
     res.status(200).json({ success: true, message: "Branch updated", branch });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+    next(errorHandler(400, error.message));
   }
 };
 
-export const deleteBranch = async (req, res) => {
+export const deleteBranch = async (req, res, next) => {
   try {
-    const branch = await Branch.findOneAndDelete({
-      _id: req.params.id,
-      pharmacy: req.pharmacyId,
-    });
-    if (!branch)
-      return res
-        .status(404)
-        .json({ success: false, message: "Branch not found" });
+    const branch = await Branch.findOneAndDelete({ _id: req.params.id, pharmacy: req.pharmacyId });
+    if (!branch) return next(errorHandler(404, "Branch not found"));
     res.status(200).json({ success: true, message: "Branch deleted" });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+    next(errorHandler(400, error.message));
   }
 };
 
-// Store CRUD
-export const createStore = async (req, res) => {
+export const createStore = async (req, res, next) => {
   try {
-    const store = new Store({ ...req.body, pharmacy: req.pharmacyId });
-    await store.save();
+    const store = await Store.create({ ...req.body, pharmacy: req.pharmacyId });
     res.status(201).json({ success: true, message: "Store created", store });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+    next(errorHandler(400, error.message));
   }
 };
 
-export const getStores = async (req, res) => {
+export const getStores = async (req, res, next) => {
   try {
     const stores = await Store.find({ pharmacy: req.pharmacyId });
-    res.status(200).json(stores);
+    res.status(200).json({ success: true, stores });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+    next(errorHandler(400, error.message));
   }
 };
 
-export const getStore = async (req, res) => {
+export const getStore = async (req, res, next) => {
   try {
-    const store = await Store.findOne({
-      _id: req.params.id,
-      pharmacy: req.pharmacyId,
-    });
-    if (!store)
-      return res
-        .status(404)
-        .json({ success: false, message: "Store not found" });
+    const store = await Store.findOne({ _id: req.params.id, pharmacy: req.pharmacyId });
+    if (!store) return next(errorHandler(404, "Store not found"));
     res.status(200).json({ success: true, store });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+    next(errorHandler(400, error.message));
   }
 };
 
-export const updateStore = async (req, res) => {
+export const updateStore = async (req, res, next) => {
   try {
     const store = await Store.findOneAndUpdate(
       { _id: req.params.id, pharmacy: req.pharmacyId },
       req.body,
       { new: true }
     );
-    if (!store)
-      return res
-        .status(404)
-        .json({ success: false, message: "Store not found" });
+    if (!store) return next(errorHandler(404, "Store not found"));
     res.status(200).json({ success: true, message: "Store updated", store });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+    next(errorHandler(400, error.message));
   }
 };
 
-export const deleteStore = async (req, res) => {
+export const deleteStore = async (req, res, next) => {
   try {
-    const store = await Store.findOneAndDelete({
-      _id: req.params.id,
-      pharmacy: req.pharmacyId,
-    });
-    if (!store)
-      return res
-        .status(404)
-        .json({ success: false, message: "Store not found" });
+    const store = await Store.findOneAndDelete({ _id: req.params.id, pharmacy: req.pharmacyId });
+    if (!store) return next(errorHandler(404, "Store not found"));
     res.status(200).json({ success: true, message: "Store deleted" });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+    next(errorHandler(400, error.message));
   }
 };

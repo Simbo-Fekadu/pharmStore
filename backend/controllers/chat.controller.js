@@ -1,33 +1,25 @@
 import ChatMessage from "../models/chat.model.js";
 import User from "../models/user.model.js";
 import Branch from "../models/branch.model.js";
+import errorHandler from "../utils/error.js";
 
-// Build sender handle:
-//  - admin => username.admin
-//  - employee with branch => username.branchname (normalized)
-//  - otherwise => username
 async function buildHandle(user) {
   if (!user) return "unknown";
   let handle = user.username || "user";
-  if (user.role === "admin") {
-    return `${handle}.admin`;
-  }
+  if (user.role === "admin") return `${handle}.admin`;
   if (user.branch) {
     try {
       const branch = await Branch.findById(user.branch).select("name").lean();
       if (branch?.name) {
-        // normalize branch name (remove spaces)
         const norm = branch.name.replace(/\s+/g, "").toLowerCase();
         handle = `${handle}.${norm}`;
       }
-    } catch {
-      /* ignore */
-    }
+    } catch { /* ignore */ }
   }
   return handle;
 }
 
-export const listMessages = async (req, res) => {
+export const listMessages = async (req, res, next) => {
   try {
     const { room = "global", limit = 200 } = req.query;
     const filter = { room };
@@ -38,16 +30,14 @@ export const listMessages = async (req, res) => {
       .lean();
     res.json({ success: true, count: msgs.length, messages: msgs.reverse() });
   } catch (e) {
-    res.status(400).json({ success: false, message: e.message });
+    next(errorHandler(400, e.message));
   }
 };
 
-export const postMessage = async (req, res) => {
+export const postMessage = async (req, res, next) => {
   try {
     const { text, room = "global" } = req.body;
-    if (!text || !text.trim()) {
-      return res.status(400).json({ success: false, message: "text required" });
-    }
+    if (!text || !text.trim()) return next(errorHandler(400, "text required"));
     const user = req.user?.id ? await User.findById(req.user.id) : null;
     const senderHandle = await buildHandle(user);
     const msg = await ChatMessage.create({
@@ -59,6 +49,6 @@ export const postMessage = async (req, res) => {
     });
     res.status(201).json({ success: true, message: msg });
   } catch (e) {
-    res.status(400).json({ success: false, message: e.message });
+    next(errorHandler(400, e.message));
   }
 };

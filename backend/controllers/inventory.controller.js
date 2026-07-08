@@ -1,27 +1,18 @@
 import mongoose from "mongoose";
 import { StockLedger, StockBalance } from "../models/inventory.model.js";
+import Request from "../models/request.model.js";
 import Medicine from "../models/medicine.model.js";
 import Branch from "../models/branch.model.js";
 import Store from "../models/store.model.js";
-
-// Helper to upsert balance atomically
-async function applyLedgerToBalance(session, entry, ledgerId) {
-  const filter = {
-    medicineId: entry.medicineId,
-    batchId: entry.batchId,
-    locationId: entry.locationId,
-  };
-  const update = {
-    $inc: { onHandQty: entry.quantity },
-    $set: { lastTxnAt: new Date(), lastTxnId: ledgerId },
-  };
-  await StockBalance.updateOne(filter, update, { upsert: true, session });
-}
+import errorHandler from "../utils/error.js";
+import { postLedgerEntry } from "../services/stock.service.js";
+import { transferStock } from "../services/transfer.service.js";
 
 export const postLedger = async (req, res, next) => {
   const payload = Array.isArray(req.body) ? req.body : [req.body];
-  if (!payload.length)
-    return res.status(400).json({ message: "Empty payload" });
+  if (!payload.length) {
+    return next(errorHandler(400, "Empty payload"));
+  }
   const session = await mongoose.startSession();
   try {
     session.startTransaction();
@@ -34,21 +25,15 @@ export const postLedger = async (req, res, next) => {
         !line.quantity ||
         !line.transactionType
       ) {
-        throw Object.assign(new Error("Missing required fields"), {
-          statusCode: 400,
-        });
+        throw Object.assign(new Error("Missing required fields"), { statusCode: 400 });
       }
-      // Basic refs check
       const [med, loc] = await Promise.all([
         Medicine.findById(line.medicineId).session(session),
         Branch.findById(line.locationId).session(session),
       ]);
-      if (!med || !loc)
-        throw Object.assign(new Error("Invalid medicine or location"), {
-          statusCode: 400,
-        });
-
-      // Prevent negative balances unless explicit allowNegative flag
+      if (!med || !loc) {
+        throw Object.assign(new Error("Invalid medicine or location"), { statusCode: 400 });
+      }
       if (!line.allowNegative) {
         const bal = await StockBalance.findOne({
           medicineId: line.medicineId,
@@ -57,53 +42,42 @@ export const postLedger = async (req, res, next) => {
         }).session(session);
         const current = bal?.onHandQty || 0;
         if (current + line.quantity < 0) {
-          throw Object.assign(new Error("Insufficient stock"), {
-            statusCode: 409,
-          });
+          throw Object.assign(new Error("Insufficient stock"), { statusCode: 409 });
         }
       }
-      // Idempotency (optional): ignore if same idempotencyKey exists
       if (line.idempotencyKey) {
-        const exists = await StockLedger.findOne({
-          idempotencyKey: line.idempotencyKey,
-        }).session(session);
+        const exists = await StockLedger.findOne({ idempotencyKey: line.idempotencyKey }).session(session);
         if (exists) {
           results.push(exists);
           continue;
         }
       }
-      const ledger = await StockLedger.create(
-        [
-          {
-            medicineId: line.medicineId,
-            batchId: line.batchId,
-            locationId: line.locationId,
-            quantity: line.quantity,
-            transactionType: line.transactionType,
-            sourceDocType: line.sourceDocType,
-            sourceDocId: line.sourceDocId,
-            unitCost: line.unitCost,
-            unitPrice: line.unitPrice,
-            correlationId: line.correlationId,
-            idempotencyKey: line.idempotencyKey,
-            createdByUserId: req.user?.id,
-            expiryDate: line.expiryDate,
-            notes: line.notes,
-          },
-        ],
-        { session }
+      const saved = await postLedgerEntry(
+        {
+          medicineId: line.medicineId,
+          batchId: line.batchId,
+          locationId: line.locationId,
+          quantity: line.quantity,
+          transactionType: line.transactionType,
+          sourceDocType: line.sourceDocType,
+          sourceDocId: line.sourceDocId,
+          unitCost: line.unitCost,
+          unitPrice: line.unitPrice,
+          correlationId: line.correlationId,
+          idempotencyKey: line.idempotencyKey,
+          createdByUserId: req.user?.id,
+          expiryDate: line.expiryDate,
+          notes: line.notes,
+        },
+        session
       );
-      const saved = ledger[0];
-      await applyLedgerToBalance(session, line, saved._id);
       results.push(saved);
     }
     await session.commitTransaction();
-    res
-      .status(201)
-      .json({ success: true, count: results.length, entries: results });
+    res.status(201).json({ success: true, count: results.length, entries: results });
   } catch (err) {
     await session.abortTransaction();
-    next(err);
+    next(err.statusCode ? err : errorHandler(500, err.message));
   } finally {
     session.endSession();
   }
@@ -354,87 +328,25 @@ export const directTransfer = async (req, res, next) => {
   try {
     const { storeId, branchId, medicineId, quantity } = req.body;
     if (!storeId || !branchId || !medicineId || !quantity) {
-      return res.status(400).json({
-        success: false,
-        message: "storeId, branchId, medicineId, quantity required",
-      });
+      return next(errorHandler(400, "storeId, branchId, medicineId, quantity required"));
     }
     const qty = Math.abs(Number(quantity));
-    if (qty <= 0)
-      return res
-        .status(400)
-        .json({ success: false, message: "quantity must be > 0" });
+    if (qty <= 0) {
+      return next(errorHandler(400, "quantity must be > 0"));
+    }
     const session = await mongoose.startSession();
     try {
       session.startTransaction();
-      const [store, branch, med] = await Promise.all([
-        Store.findById(storeId).session(session),
-        Branch.findById(branchId).session(session),
-        Medicine.findById(medicineId).session(session),
-      ]);
-      if (!store || !branch || !med) {
-        await session.abortTransaction();
-        return res
-          .status(400)
-          .json({ success: false, message: "Invalid refs" });
-      }
-      const sourceBal = await StockBalance.findOne({
+      const correlationId = await transferStock({
+        fromLocationId: storeId,
+        toLocationId: branchId,
         medicineId,
-        locationId: storeId,
-      }).session(session);
-      if (!sourceBal || (sourceBal.onHandQty || 0) < qty) {
-        await session.abortTransaction();
-        return res
-          .status(409)
-          .json({ success: false, message: "Insufficient central stock" });
-      }
-      const correlationId = `DIRECT-${Date.now()}`;
-      const outLine = await StockLedger.create(
-        [
-          {
-            medicineId,
-            locationId: storeId,
-            quantity: -qty,
-            transactionType: "TRANSFER_OUT",
-            sourceDocType: "DIRECT",
-            sourceDocId: correlationId,
-            correlationId,
-            createdByUserId: req.user?.id,
-          },
-        ],
-        { session }
-      );
-      const inLine = await StockLedger.create(
-        [
-          {
-            medicineId,
-            locationId: branchId,
-            quantity: qty,
-            transactionType: "TRANSFER_IN",
-            sourceDocType: "DIRECT",
-            sourceDocId: correlationId,
-            correlationId,
-            createdByUserId: req.user?.id,
-          },
-        ],
-        { session }
-      );
-      await StockBalance.updateOne(
-        { medicineId, locationId: storeId },
-        {
-          $inc: { onHandQty: -qty },
-          $set: { lastTxnAt: new Date(), lastTxnId: outLine[0]._id },
-        },
-        { upsert: true, session }
-      );
-      await StockBalance.updateOne(
-        { medicineId, locationId: branchId },
-        {
-          $inc: { onHandQty: qty },
-          $set: { lastTxnAt: new Date(), lastTxnId: inLine[0]._id },
-        },
-        { upsert: true, session }
-      );
+        quantity: qty,
+        sourceDocType: "DIRECT",
+        correlationId: `DIRECT-${Date.now()}`,
+        userId: req.user?.id,
+        session,
+      });
       await session.commitTransaction();
       res.json({ success: true, message: "Transferred", correlationId });
     } catch (txnErr) {
@@ -444,7 +356,7 @@ export const directTransfer = async (req, res, next) => {
       session.endSession();
     }
   } catch (err) {
-    next(err);
+    next(err.statusCode ? err : errorHandler(500, err.message));
   }
 };
 
@@ -497,202 +409,96 @@ export const backfillMedicineQuantities = async (req, res, next) => {
   }
 };
 
-import Inventory from "../models/inventory.model.js";
-import Request from "../models/request.model.js";
-
-// Create or update inventory for a location
+// Create or update inventory for a location (via StockBalance/StockLedger)
 export const upsertInventory = async (req, res, next) => {
   try {
-    const {
-      medicineId,
-      locationType,
-      locationId,
-      quantity,
-      batchNumber,
-      expiryDate,
-    } = req.body;
-    // For initial stock entry enforce Store location type
+    const { medicineId, locationType, locationId, quantity, batchNumber, expiryDate } = req.body;
     if (locationType !== "Store") {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Direct stock entry allowed only at Store. Branches must request.",
-      });
+      return next(errorHandler(400, "Direct stock entry allowed only at Store. Branches must request."));
     }
-    let inventory = await Inventory.findOne({
-      medicine: medicineId,
-      locationType: "Store",
+    if (!medicineId || !locationId || !quantity) {
+      return next(errorHandler(400, "medicineId, locationId, quantity required"));
+    }
+    const qty = Math.abs(Number(quantity));
+    if (qty <= 0) {
+      return next(errorHandler(400, "quantity must be > 0"));
+    }
+    const ledger = await StockLedger.create({
+      medicineId,
       locationId,
-      batchNumber,
+      quantity: qty,
+      transactionType: "GRN",
+      sourceDocType: "MANUAL",
+      sourceDocId: `UPSERT-${Date.now()}`,
+      createdByUserId: req.user?.id,
+      expiryDate,
+      notes: batchNumber ? `Batch: ${batchNumber}` : undefined,
     });
-    if (inventory) {
-      inventory.quantity += quantity;
-      if (expiryDate) inventory.expiryDate = expiryDate;
-      await inventory.save();
-      return res.status(200).json({
-        success: true,
-        message: "Inventory updated successfully",
-        inventory,
-      });
-    } else {
-      inventory = new Inventory({
-        medicine: medicineId,
-        locationType: "Store",
-        locationId,
-        quantity,
-        batchNumber,
-        expiryDate,
-      });
-      await inventory.save();
-      return res.status(201).json({
-        success: true,
-        message: "Inventory created successfully",
-        inventory,
-      });
-    }
+    await StockBalance.updateOne(
+      { medicineId, locationId },
+      { $inc: { onHandQty: qty }, $set: { lastTxnAt: new Date(), lastTxnId: ledger._id } },
+      { upsert: true }
+    );
+    res.status(201).json({ success: true, message: "Stock recorded", ledger });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+    next(errorHandler(400, error.message));
   }
 };
 
-// Get inventory for a location
+// Get inventory for a location (via StockBalance)
 export const getInventory = async (req, res, next) => {
   try {
-    const { locationType, locationId } = req.query;
+    const { locationId } = req.query;
     let resolvedLocationId = locationId;
-    // Allow a friendly alias ("main") or attempt graceful handling of a non ObjectId
     if (resolvedLocationId) {
       const valid = mongoose.Types.ObjectId.isValid(resolvedLocationId);
       if (!valid) {
         if (resolvedLocationId === "main") {
           const store = await Store.findOne().select("_id").lean();
-          if (!store) {
-            return res
-              .status(400)
-              .json({ success: false, message: "No store configured yet" });
-          }
+          if (!store) return next(errorHandler(400, "No store configured yet"));
           resolvedLocationId = store._id.toString();
         } else {
-          return res.status(400).json({
-            success: false,
-            message: "Invalid locationId format",
-          });
+          return next(errorHandler(400, "Invalid locationId format"));
         }
       }
     }
-    const query = { locationType };
-    if (resolvedLocationId) query.locationId = resolvedLocationId;
-    const inventory = await Inventory.find(query).populate("medicine");
-    res.status(200).json({ success: true, inventory, resolvedLocationId });
+    const filter = {};
+    if (resolvedLocationId) filter.locationId = resolvedLocationId;
+    const balances = await StockBalance.find(filter)
+      .populate("medicineId", "medicineName brand category batchNumber expiryDate purchasePrice sellingPriceBase sellingPricePack")
+      .lean();
+    res.status(200).json({ success: true, inventory: balances });
   } catch (error) {
-    next(error);
+    next(errorHandler(500, error.message));
   }
 };
 
 // Transfer medicine from store to branch
 export const transferMedicine = async (req, res, next) => {
   try {
-    const {
-      medicineId,
-      fromLocationId,
-      toLocationId,
-      quantity,
-      batchNumber,
-    } = req.body;
+    const { medicineId, fromLocationId, toLocationId, quantity } = req.body;
     if (!medicineId || !fromLocationId || !toLocationId || !quantity) {
-      return res.status(400).json({
-        success: false,
-        message: "medicineId, fromLocationId, toLocationId, quantity required",
-      });
+      return next(errorHandler(400, "medicineId, fromLocationId, toLocationId, quantity required"));
     }
     const qty = Math.abs(Number(quantity));
     if (qty <= 0) {
-      return res
-        .status(400)
-        .json({ success: false, message: "quantity must be > 0" });
+      return next(errorHandler(400, "quantity must be > 0"));
     }
     const session = await mongoose.startSession();
     try {
       session.startTransaction();
-
-      const [store, branch, med] = await Promise.all([
-        Store.findById(fromLocationId).session(session),
-        Branch.findById(toLocationId).session(session),
-        Medicine.findById(medicineId).session(session),
-      ]);
-      if (!store || !branch || !med) {
-        await session.abortTransaction();
-        return res
-          .status(400)
-          .json({ success: false, message: "Invalid store/branch/medicine" });
-      }
-
-      const sourceBal = await StockBalance.findOne({
+      const correlationId = await transferStock({
+        fromLocationId,
+        toLocationId,
         medicineId,
-        locationId: fromLocationId,
-      }).session(session);
-      if (!sourceBal || (sourceBal.onHandQty || 0) < qty) {
-        await session.abortTransaction();
-        return res
-          .status(409)
-          .json({ success: false, message: "Insufficient central stock" });
-      }
-
-      const correlationId = `LEGACY-XFER-${Date.now()}`;
-      const outLine = await StockLedger.create(
-        [
-          {
-            medicineId,
-            locationId: fromLocationId,
-            quantity: -qty,
-            transactionType: "TRANSFER_OUT",
-            sourceDocType: "LEGACY_TRANSFER",
-            sourceDocId: correlationId,
-            correlationId,
-            createdByUserId: req.user?.id,
-          },
-        ],
-        { session }
-      );
-      const inLine = await StockLedger.create(
-        [
-          {
-            medicineId,
-            locationId: toLocationId,
-            quantity: qty,
-            transactionType: "TRANSFER_IN",
-            sourceDocType: "LEGACY_TRANSFER",
-            sourceDocId: correlationId,
-            correlationId,
-            createdByUserId: req.user?.id,
-          },
-        ],
-        { session }
-      );
-
-      await StockBalance.updateOne(
-        { medicineId, locationId: fromLocationId },
-        {
-          $inc: { onHandQty: -qty },
-          $set: { lastTxnAt: new Date(), lastTxnId: outLine[0]._id },
-        },
-        { upsert: true, session }
-      );
-      await StockBalance.updateOne(
-        { medicineId, locationId: toLocationId },
-        {
-          $inc: { onHandQty: qty },
-          $set: { lastTxnAt: new Date(), lastTxnId: inLine[0]._id },
-        },
-        { upsert: true, session }
-      );
-
-      await session.commitTransaction();
-      res.status(200).json({
-        success: true,
-        message: "Transfer successful (ledger)",
-        correlationId,
+        quantity: qty,
+        sourceDocType: "LEGACY_TRANSFER",
+        correlationId: `LEGACY-XFER-${Date.now()}`,
+        userId: req.user?.id,
+        session,
       });
+      await session.commitTransaction();
+      res.status(200).json({ success: true, message: "Transfer successful (ledger)", correlationId });
     } catch (txnErr) {
       await session.abortTransaction();
       throw txnErr;
@@ -700,7 +506,7 @@ export const transferMedicine = async (req, res, next) => {
       session.endSession();
     }
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+    next(error.statusCode ? error : errorHandler(500, error.message));
   }
 };
 
@@ -783,12 +589,12 @@ export const createRequest = async (req, res) => {
       .status(201)
       .json({ success: true, message: "Request created", request });
   } catch (e) {
-    res.status(400).json({ success: false, message: e.message });
+    next(errorHandler(400, e.message));
   }
 };
 
 // List medicines belonging to (transferred to) a branch based on StockBalance
-export const getBranchMedicines = async (req, res) => {
+export const getBranchMedicines = async (req, res, next) => {
   try {
     const { branchId } = req.params;
     if (!mongoose.Types.ObjectId.isValid(branchId)) {
@@ -830,11 +636,11 @@ export const getBranchMedicines = async (req, res) => {
     }));
     res.json({ success: true, page, limit, totalCount, count: items.length, medicines: items });
   } catch (e) {
-    res.status(400).json({ success: false, message: e.message });
+    next(errorHandler(400, e.message));
   }
 };
 
-export const listRequests = async (req, res) => {
+export const listRequests = async (req, res, next) => {
   try {
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
@@ -853,197 +659,88 @@ export const listRequests = async (req, res) => {
     ]);
     res.status(200).json({ success: true, page, limit, totalCount, requests });
   } catch (e) {
-    res.status(400).json({ success: false, message: e.message });
+    next(errorHandler(400, e.message));
   }
 };
 
-export const getRequest = async (req, res) => {
+export const getRequest = async (req, res, next) => {
   try {
     const { id } = req.params;
     const request = await Request.findById(id)
       .populate("medicine")
       .populate("branch")
       .populate("approvedByUserId", "username role");
-    if (!request)
-      return res
-        .status(404)
-        .json({ success: false, message: "Request not found" });
+    if (!request) return next(errorHandler(404, "Request not found"));
     res.status(200).json({ success: true, request });
   } catch (e) {
-    res.status(400).json({ success: false, message: e.message });
+    next(errorHandler(400, e.message));
   }
 };
 
-export const addRequestMessage = async (req, res) => {
+export const addRequestMessage = async (req, res, next) => {
   try {
     const { id } = req.params;
     const { sender, text } = req.body;
-    if (!sender || !text)
-      return res
-        .status(400)
-        .json({ success: false, message: "sender and text required" });
-    if (!["admin", "branch"].includes(sender))
-      return res
-        .status(400)
-        .json({ success: false, message: "invalid sender" });
+    if (!sender || !text) return next(errorHandler(400, "sender and text required"));
+    if (!["admin", "branch"].includes(sender)) return next(errorHandler(400, "invalid sender"));
     const request = await Request.findById(id);
-    if (!request)
-      return res
-        .status(404)
-        .json({ success: false, message: "Request not found" });
+    if (!request) return next(errorHandler(404, "Request not found"));
     request.messages.push({ sender, text });
     await request.save();
     res.status(201).json({ success: true, message: "Message added", request });
   } catch (e) {
-    res.status(400).json({ success: false, message: e.message });
+    next(errorHandler(400, e.message));
   }
 };
 
-export const approveRequest = async (req, res) => {
+export const approveRequest = async (req, res, next) => {
   try {
     const { id } = req.params;
     const request = await Request.findById(id);
-    if (!request)
-      return res
-        .status(404)
-        .json({ success: false, message: "Request not found" });
-    if (request.status !== "Pending")
-      return res
-        .status(400)
-        .json({ success: false, message: "Request already processed" });
+    if (!request) return next(errorHandler(404, "Request not found"));
+    if (request.status !== "Pending") return next(errorHandler(400, "Request already processed"));
     const centralStore = await Store.findOne();
-    if (!centralStore)
-      return res
-        .status(400)
-        .json({ success: false, message: "No central store configured" });
+    if (!centralStore) return next(errorHandler(400, "No central store configured"));
     const storeId = centralStore._id;
 
     const session = await mongoose.startSession();
     try {
       session.startTransaction();
-
-      // Re-read request inside transaction for atomicity
       const txnRequest = await Request.findById(id).session(session);
       if (!txnRequest || txnRequest.status !== "Pending") {
         await session.abortTransaction();
-        return res
-          .status(400)
-          .json({ success: false, message: "Request already processed" });
+        return next(errorHandler(400, "Request already processed"));
       }
 
-      // Check balance inside transaction with snapshot isolation
-      let sourceBal = await StockBalance.findOne({
+      const sourceBal = await StockBalance.findOne({
         medicineId: txnRequest.medicine,
         locationId: storeId,
       }).session(session);
-      let available = sourceBal?.onHandQty || 0;
-
-      if (!sourceBal) {
-        const net = await StockLedger.aggregate([
-          {
-            $match: {
-              locationId: storeId,
-              medicineId: txnRequest.medicine,
-            },
-          },
-          { $group: { _id: "$medicineId", qty: { $sum: "$quantity" } } },
-        ]).session(session);
-        if (net.length) available = net[0].qty || 0;
-        if (available <= 0) {
-          const legacyInv = await Inventory.findOne({
-            medicine: txnRequest.medicine,
-            locationType: "Store",
-            locationId: storeId,
-          }).session(session);
-          if (legacyInv && legacyInv.quantity > 0)
-            available = legacyInv.quantity;
-        }
-        if (available <= 0) {
-          const legacyMed = await Medicine.findById(
-            txnRequest.medicine
-          ).session(session);
-          if (
-            legacyMed &&
-            typeof legacyMed.quantity === "number" &&
-            legacyMed.quantity > 0
-          ) {
-            available = legacyMed.quantity;
-          }
-        }
-      }
+      const available = sourceBal?.onHandQty || 0;
 
       if (available < txnRequest.quantity) {
         await session.abortTransaction();
-        return res.status(400).json({
-          success: false,
-          message: "Insufficient central stock",
-          available,
-          needed: txnRequest.quantity,
-        });
-      }
-
-      if (!sourceBal) {
-        await StockBalance.updateOne(
-          { medicineId: txnRequest.medicine, locationId: storeId },
-          { $setOnInsert: { onHandQty: available } },
-          { upsert: true, session }
-        );
+        return next(errorHandler(400, "Insufficient central stock"));
       }
 
       const correlationId = `REQ-${id}`;
       const outLine = await StockLedger.create(
-        [
-          {
-            medicineId: txnRequest.medicine,
-            locationId: storeId,
-            quantity: -Math.abs(txnRequest.quantity),
-            transactionType: "TRANSFER_OUT",
-            sourceDocType: "REQUEST",
-            sourceDocId: id,
-            correlationId,
-            createdByUserId: req.user?.id,
-          },
-        ],
+        [{ medicineId: txnRequest.medicine, locationId: storeId, quantity: -Math.abs(txnRequest.quantity), transactionType: "TRANSFER_OUT", sourceDocType: "REQUEST", sourceDocId: id, correlationId, createdByUserId: req.user?.id }],
         { session }
       );
       const inLine = await StockLedger.create(
-        [
-          {
-            medicineId: txnRequest.medicine,
-            locationId: txnRequest.branch,
-            quantity: Math.abs(txnRequest.quantity),
-            transactionType: "TRANSFER_IN",
-            sourceDocType: "REQUEST",
-            sourceDocId: id,
-            correlationId,
-            createdByUserId: req.user?.id,
-          },
-        ],
+        [{ medicineId: txnRequest.medicine, locationId: txnRequest.branch, quantity: Math.abs(txnRequest.quantity), transactionType: "TRANSFER_IN", sourceDocType: "REQUEST", sourceDocId: id, correlationId, createdByUserId: req.user?.id }],
         { session }
       );
 
       await StockBalance.updateOne(
         { medicineId: txnRequest.medicine, locationId: storeId },
-        {
-          $inc: { onHandQty: -Math.abs(txnRequest.quantity) },
-          $set: { lastTxnAt: new Date(), lastTxnId: outLine[0]._id },
-        },
+        { $inc: { onHandQty: -Math.abs(txnRequest.quantity) }, $set: { lastTxnAt: new Date(), lastTxnId: outLine[0]._id } },
         { upsert: true, session }
       );
-      await Inventory.updateOne(
-        {
-          medicine: txnRequest.medicine,
-          locationType: "Store",
-          locationId: storeId,
-        },
-        { $inc: { quantity: -Math.abs(txnRequest.quantity) } }
-      ).session(session);
       await StockBalance.updateOne(
         { medicineId: txnRequest.medicine, locationId: txnRequest.branch },
-        {
-          $inc: { onHandQty: Math.abs(txnRequest.quantity) },
-          $set: { lastTxnAt: new Date(), lastTxnId: inLine[0]._id },
-        },
+        { $inc: { onHandQty: Math.abs(txnRequest.quantity) }, $set: { lastTxnAt: new Date(), lastTxnId: inLine[0]._id } },
         { upsert: true, session }
       );
 
@@ -1054,9 +751,7 @@ export const approveRequest = async (req, res) => {
 
       await session.commitTransaction();
 
-      res
-        .status(200)
-        .json({ success: true, message: "Request fulfilled", request: txnRequest });
+      res.status(200).json({ success: true, message: "Request fulfilled", request: txnRequest });
     } catch (txnErr) {
       await session.abortTransaction();
       throw txnErr;
@@ -1068,51 +763,34 @@ export const approveRequest = async (req, res) => {
   }
 };
 
-export const rejectRequest = async (req, res) => {
+export const rejectRequest = async (req, res, next) => {
   try {
     const { id } = req.params;
     const { note } = req.body;
     const request = await Request.findById(id);
-    if (!request)
-      return res
-        .status(404)
-        .json({ success: false, message: "Request not found" });
-    if (request.status !== "Pending")
-      return res
-        .status(400)
-        .json({ success: false, message: "Request already processed" });
+    if (!request) return next(errorHandler(404, "Request not found"));
+    if (request.status !== "Pending") return next(errorHandler(400, "Request already processed"));
     request.status = "Rejected";
     request.rejectionNote = note;
     await request.save();
-    res
-      .status(200)
-      .json({ success: true, message: "Request rejected", request });
+    res.status(200).json({ success: true, message: "Request rejected", request });
   } catch (e) {
-    res.status(400).json({ success: false, message: e.message });
+    next(errorHandler(400, e.message));
   }
 };
 
-// Cancel a pending request (branch/employee initiated). Simply marks as Rejected with note "Cancelled by branch" if not already processed.
-export const cancelRequest = async (req, res) => {
+export const cancelRequest = async (req, res, next) => {
   try {
     const { id } = req.params;
     const request = await Request.findById(id);
-    if (!request)
-      return res
-        .status(404)
-        .json({ success: false, message: "Request not found" });
-    if (request.status !== "Pending")
-      return res
-        .status(400)
-        .json({ success: false, message: "Cannot cancel processed request" });
+    if (!request) return next(errorHandler(404, "Request not found"));
+    if (request.status !== "Pending") return next(errorHandler(400, "Cannot cancel processed request"));
     request.status = "Rejected";
     request.rejectionNote = "Cancelled by branch";
     await request.save();
-    res
-      .status(200)
-      .json({ success: true, message: "Request cancelled", request });
+    res.status(200).json({ success: true, message: "Request cancelled", request });
   } catch (e) {
-    res.status(400).json({ success: false, message: e.message });
+    next(errorHandler(400, e.message));
   }
 };
 
@@ -1162,23 +840,23 @@ export const getCentralAvailable = async (req, res, next) => {
     if (net > 0) {
       return res.json({ success: true, available: net, source: "ledger" });
     }
-    // 3) Legacy Inventory fallback (store type)
-    const invAgg = await Inventory.aggregate([
+    // 3) StockBalance fallback (store type)
+    const sbAgg = await StockBalance.aggregate([
       {
         $match: {
-          medicine: new mongoose.Types.ObjectId(medicineId),
+          medicineId: new mongoose.Types.ObjectId(medicineId),
           locationType: "Store",
           locationId: { $in: storeIds },
         },
       },
-      { $group: { _id: null, total: { $sum: "$quantity" } } },
+      { $group: { _id: null, total: { $sum: "$onHandQty" } } },
     ]);
-    const invTotal = invAgg[0]?.total || 0;
-    if (invTotal > 0) {
+    const sbTotal = sbAgg[0]?.total || 0;
+    if (sbTotal > 0) {
       return res.json({
         success: true,
-        available: invTotal,
-        source: "legacyInv",
+        available: sbTotal,
+        source: "StockBalance",
       });
     }
     // 4) Legacy medicine.quantity (very old data)
@@ -1240,84 +918,41 @@ function logSyntheticTransfer(action, userId, meta = {}) {
     );
   } catch {}
 }
-export const employeeAddBranchMedicine = async (req, res) => {
+export const employeeAddBranchMedicine = async (req, res, next) => {
   try {
     const user = req.user;
-    if (!user || !user.branch) {
-      return res
-        .status(403)
-        .json({ success: false, message: "Branch context required" });
-    }
-    if (!["employee", "inventory_manager"].includes(user.role)) {
-      return res.status(403).json({
-        success: false,
-        message: "Only employees can add branch medicines",
-      });
-    }
+    if (!user || !user.branch) return next(errorHandler(403, "Branch context required"));
+    if (!["employee", "inventory_manager"].includes(user.role)) return next(errorHandler(403, "Only employees can add branch medicines"));
     const { medicineId, quantity, reason } = req.body;
-    if (!medicineId || !quantity || Number(quantity) <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: "medicineId and positive quantity required",
-      });
-    }
+    if (!medicineId || !quantity || Number(quantity) <= 0) return next(errorHandler(400, "medicineId and positive quantity required"));
     const med = await Medicine.findById(medicineId);
-    if (!med || med.isDeleted) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Medicine not found" });
-    }
+    if (!med || med.isDeleted) return next(errorHandler(404, "Medicine not found"));
     const central = await Store.findOne();
-    if (!central) {
-      return res
-        .status(500)
-        .json({ success: false, message: "Central store missing" });
-    }
+    if (!central) return next(errorHandler(500, "Central store missing"));
     const qty = Math.abs(Number(quantity));
 
     const session = await mongoose.startSession();
     try {
       session.startTransaction();
 
-      const centralBal = await StockBalance.findOne({
-        medicineId,
-        locationId: central._id,
-      }).session(session);
+      const centralBal = await StockBalance.findOne({ medicineId, locationId: central._id }).session(session);
       if (!centralBal || centralBal.onHandQty < qty) {
         await session.abortTransaction();
-        return res
-          .status(400)
-          .json({ success: false, message: "Insufficient central store stock" });
+        return next(errorHandler(400, "Insufficient central store stock"));
       }
 
       const outLedger = await StockLedger.create(
-        [
-          {
-            medicineId,
-            locationId: central._id,
-            quantity: -qty,
-            transactionType: "TRANSFER_OUT",
-            createdByUserId: user.id,
-            notes: reason || undefined,
-          },
-        ],
+        [{ medicineId, locationId: central._id, quantity: -qty, transactionType: "TRANSFER_OUT", createdByUserId: user.id, notes: reason || undefined }],
         { session }
       );
       await StockBalance.updateOne(
         { medicineId, locationId: central._id },
-        {
-          $inc: { onHandQty: -qty },
-          $set: { lastTxnAt: new Date(), lastTxnId: outLedger[0]._id },
-        },
+        { $inc: { onHandQty: -qty }, $set: { lastTxnAt: new Date(), lastTxnId: outLedger[0]._id } },
         { upsert: true, session }
       );
 
       const inLedger = await StockLedger.create(
-        [
-          {
-            medicineId,
-            locationId: user.branch,
-            quantity: qty,
+        [{ medicineId, locationId: user.branch, quantity: qty,
             transactionType: "TRANSFER_IN",
             createdByUserId: user.id,
             notes: reason || undefined,
@@ -1356,12 +991,12 @@ export const employeeAddBranchMedicine = async (req, res) => {
       session.endSession();
     }
   } catch (e) {
-    return res.status(400).json({ success: false, message: e.message });
+    next(errorHandler(400, e.message));
   }
 };
 
 // Batch variant: body.items = [{ medicineId, quantity, reason? }, ...]
-export const employeeAddBranchMedicinesBatch = async (req, res) => {
+export const employeeAddBranchMedicinesBatch = async (req, res, next) => {
   try {
     const user = req.user;
     if (!user || !user.branch) {
