@@ -478,7 +478,80 @@ export const getAdminSalesSummary = async (req, res, next) => {
   }
 };
 
-// ADMIN: Today's total sales across all branches
+// ADMIN: Refund a sale — reverse stock and mark sale as refunded
+export const refundSale = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { note } = req.body;
+    const sale = await Sale.findById(id);
+    if (!sale) return next(errorHandler(404, "Sale not found"));
+    if (sale.refundedAt) return next(errorHandler(400, "Sale already refunded"));
+
+    // Find original ledger entry
+    const ledgerEntry = await StockLedger.findOne({
+      sourceDocType: "SALE",
+      sourceDocId: sale._id.toString(),
+      status: "ACTIVE",
+    });
+    if (!ledgerEntry) return next(errorHandler(404, "No active ledger entry found for this sale"));
+
+    const qtyInBase = Math.abs(ledgerEntry.quantity);
+
+    const session = await mongoose.startSession();
+    try {
+      session.startTransaction();
+
+      // Mark original ledger as REVERSED
+      await StockLedger.updateOne(
+        { _id: ledgerEntry._id },
+        { $set: { status: "REVERSED" } },
+        { session }
+      );
+
+      // Create return ledger entry (positive = stock back in)
+      await StockLedger.create(
+        [{
+          medicineId: sale.medicineId,
+          locationId: sale.branchId,
+          quantity: qtyInBase,
+          transactionType: "RETURN_CUSTOMER",
+          sourceDocType: "SALE_REFUND",
+          sourceDocId: sale._id.toString(),
+          unitPrice: sale.price,
+          createdByUserId: req.user?.id,
+          notes: note ? `Refund: ${note}` : undefined,
+        }],
+        { session }
+      );
+
+      // Restore stock balance
+      await StockBalance.updateOne(
+        { medicineId: sale.medicineId, locationId: sale.branchId },
+        {
+          $inc: { onHandQty: qtyInBase },
+          $set: { lastTxnAt: new Date() },
+        },
+        { upsert: true, session }
+      );
+
+      // Mark sale as refunded
+      sale.refundedAt = new Date();
+      sale.refundNote = note || "";
+      if (req.user?.id) sale.refundedByUserId = req.user.id;
+      await sale.save({ session });
+
+      await session.commitTransaction();
+      res.status(200).json({ success: true, message: "Sale refunded", sale });
+    } catch (txnErr) {
+      await session.abortTransaction();
+      throw txnErr;
+    } finally {
+      session.endSession();
+    }
+  } catch (e) {
+    next(e);
+  }
+};
 export const getAdminTodayTotal = async (req, res, next) => {
   try {
     const now = new Date();

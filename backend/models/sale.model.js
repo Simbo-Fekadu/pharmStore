@@ -48,6 +48,9 @@ const saleSchema = new mongoose.Schema(
       enum: ["morning", "afternoon", "evening", "night"],
       default: "morning",
     },
+    refundedAt: { type: Date },
+    refundNote: { type: String },
+    refundedByUserId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   },
   {
     timestamps: true,
