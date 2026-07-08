@@ -13,10 +13,17 @@ import xlsx from "xlsx";
 export const getMedicines = async (req, res) => {
   try {
     const { includeDeleted, withStock, storeOnly, centralNet } = req.query;
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
+    const skip = (page - 1) * limit;
+
     const filter = includeDeleted === "true" ? {} : { isDeleted: false };
     // Scope by pharmacy if provided/attached
     if (req.pharmacyId) filter.pharmacy = req.pharmacyId;
-    const medicines = await Medicine.find(filter).populate("supplier");
+    const [medicines, totalCount] = await Promise.all([
+      Medicine.find(filter).populate("supplier").skip(skip).limit(limit),
+      Medicine.countDocuments(filter),
+    ]);
     if (withStock === "true" && medicines.length) {
       const ids = medicines.map((m) => m._id);
       // store-only filter
@@ -173,7 +180,7 @@ export const getMedicines = async (req, res) => {
         }
       }
     }
-    res.status(200).json({ success: true, medicines });
+    res.status(200).json({ success: true, page, limit, totalCount, medicines });
   } catch (e) {
     res.status(400).json({ success: false, message: e.message });
   }
@@ -199,7 +206,28 @@ export const createMedicine = async (req, res) => {
         /* ignore */
       }
     }
-    const body = { ...req.body, createdBy };
+    const allowedFields = [
+      "medicineName",
+      "brand",
+      "category",
+      "unit",
+      "baseUnit",
+      "packUnit",
+      "packSize",
+      "batchNumber",
+      "expiryDate",
+      "purchasePrice",
+      "sellingPriceBase",
+      "sellingPricePack",
+      "sellingPrice",
+      "quantity",
+      "supplier",
+      "createdBy",
+    ];
+    const body = { createdBy };
+    for (const field of allowedFields) {
+      if (req.body[field] !== undefined) body[field] = req.body[field];
+    }
     if (req.pharmacyId) body.pharmacy = req.pharmacyId;
     // Basic required field validation before hitting Mongoose so we can return clearer messages
     const problems = [];
@@ -246,7 +274,10 @@ export const createMedicine = async (req, res) => {
         else delete body.supplier;
       } else {
         const sup = await Supplier.findOne({
-          supplierName: { $regex: `^${raw}$`, $options: "i" },
+          supplierName: {
+            $regex: `^${raw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
+            $options: "i",
+          },
         });
         if (sup) body.supplier = sup._id;
         else {
@@ -376,7 +407,26 @@ export const getMedicine = async (req, res) => {
 
 export const updateMedicine = async (req, res) => {
   try {
-    const update = { ...req.body };
+    const allowedFields = [
+      "medicineName",
+      "brand",
+      "category",
+      "unit",
+      "baseUnit",
+      "packUnit",
+      "packSize",
+      "batchNumber",
+      "expiryDate",
+      "purchasePrice",
+      "sellingPriceBase",
+      "sellingPricePack",
+      "sellingPrice",
+      "supplier",
+    ];
+    const update = {};
+    for (const field of allowedFields) {
+      if (req.body[field] !== undefined) update[field] = req.body[field];
+    }
     if (typeof update.supplier === "string") {
       const trimmed = update.supplier.trim();
       if (!trimmed) delete update.supplier;
@@ -387,7 +437,10 @@ export const updateMedicine = async (req, res) => {
           else delete update.supplier;
         } else {
           const sup = await Supplier.findOne({
-            supplierName: { $regex: `^${trimmed}$`, $options: "i" },
+            supplierName: {
+              $regex: `^${trimmed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
+              $options: "i",
+            },
           });
           if (sup) update.supplier = sup._id;
           else {
@@ -402,7 +455,6 @@ export const updateMedicine = async (req, res) => {
         }
       }
     }
-    // Avoid forcing sellingPrice; allow model to maintain consistency
     if (typeof update.batchNumber === "string") {
       update.batchNumber = update.batchNumber.trim();
     }
@@ -411,7 +463,6 @@ export const updateMedicine = async (req, res) => {
         .status(400)
         .json({ success: false, message: "batchNumber cannot be empty" });
     }
-    // Restrict to same pharmacy when scoped
     const q = { _id: req.params.id };
     if (req.pharmacyId) q.pharmacy = req.pharmacyId;
     const medicine = await Medicine.findOneAndUpdate(q, update, {
@@ -507,10 +558,16 @@ export const purgeMedicine = async (req, res) => {
 export const getActiveMedicines = async (req, res) => {
   try {
     const today = new Date();
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
+    const skip = (page - 1) * limit;
     const q = { isDeleted: false, expiryDate: { $gte: today } };
     if (req.pharmacyId) q.pharmacy = req.pharmacyId;
-    const medicines = await Medicine.find(q).populate("supplier");
-    res.json({ success: true, medicines });
+    const [medicines, totalCount] = await Promise.all([
+      Medicine.find(q).populate("supplier").skip(skip).limit(limit),
+      Medicine.countDocuments(q),
+    ]);
+    res.json({ success: true, page, limit, totalCount, medicines });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
   }

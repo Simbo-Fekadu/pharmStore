@@ -7,6 +7,9 @@ export async function connectDB(uri) {
   if (didConnect && mongoose.connection.readyState === 1) {
     return mongoose.connection;
   }
+  if (didConnect && mongoose.connection.readyState !== 1) {
+    connectingPromise = null;
+  }
   if (connectingPromise) return connectingPromise;
   if (!uri) throw new Error("MongoDB connection URI missing");
   connectingPromise = mongoose
@@ -33,7 +36,7 @@ export function getDB() {
 export async function disconnectDB() {
   if (mongoose.connection.readyState !== 0) {
     await mongoose.disconnect();
-    didConnect = false;
-    connectingPromise = null;
   }
+  didConnect = false;
+  connectingPromise = null;
 }

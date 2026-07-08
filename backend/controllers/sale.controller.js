@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import Sale from "../models/sale.model.js";
 import Branch from "../models/branch.model.js";
 import Medicine from "../models/medicine.model.js";
@@ -22,87 +23,111 @@ export const createSale = async (req, res, next) => {
     req.body;
 
   try {
-    // Validate medicine exists
-    const medicine = await Medicine.findById(medicineId);
-    if (!medicine) {
-      return next(errorHandler(404, "Medicine not found"));
-    }
+    const session = await mongoose.startSession();
+    try {
+      session.startTransaction();
 
-    // Validate employee exists
-    const employee = await User.findById(employeeId);
-    if (!employee || employee.role !== "employee") {
-      return next(errorHandler(404, "Employee not found"));
-    }
+      // Validate medicine exists
+      const medicine = await Medicine.findById(medicineId).session(session);
+      if (!medicine) {
+        await session.abortTransaction();
+        return next(errorHandler(404, "Medicine not found"));
+      }
 
-    // Get branch from current user (assuming employee is logged in)
-    const branchId = req.user?.branch;
-    if (!branchId) {
-      return next(
-        errorHandler(
-          400,
-          "No branch associated with user. Please re-login or contact admin."
-        )
+      // Validate employee exists
+      const employee = await User.findById(employeeId).session(session);
+      if (!employee || employee.role !== "employee") {
+        await session.abortTransaction();
+        return next(errorHandler(404, "Employee not found"));
+      }
+
+      // Get branch from current user (assuming employee is logged in)
+      const branchId = req.user?.branch;
+      if (!branchId) {
+        await session.abortTransaction();
+        return next(
+          errorHandler(
+            400,
+            "No branch associated with user. Please re-login or contact admin."
+          )
+        );
+      }
+
+      // Resolve unit conversion: treat branch stock quantities as base units
+      const q = Math.abs(Number(quantity));
+      if (!q || Number.isNaN(q)) {
+        await session.abortTransaction();
+        return next(errorHandler(400, "Invalid quantity"));
+      }
+      // Fetch balance and use medicine to compute base quantity if selling in pack
+      const bal = await StockBalance.findOne({
+        medicineId,
+        locationId: branchId,
+      }).session(session);
+      const packSize = Number(medicine.packSize) || 0;
+      const isPack =
+        unit && unit.toLowerCase() === (medicine.packUnit || "").toLowerCase();
+      const qtyInBase = isPack && packSize > 0 ? q * packSize : q;
+      const onHand = bal?.onHandQty || 0;
+      if (onHand < qtyInBase) {
+        await session.abortTransaction();
+        return next(errorHandler(400, "Insufficient branch stock"));
+      }
+
+      // Create sale record
+      const sale = new Sale({
+        medicineId,
+        medicineName: medicine.medicineName,
+        quantity: q,
+        price,
+        employeeId,
+        employeeName: employee.username,
+        branchId,
+        date: date ? new Date(date) : new Date(),
+        shift: shift || "morning",
+        unit: unit || medicine.baseUnit || medicine.unit, // for audit/tracking
+      });
+
+      await sale.save({ session });
+
+      // Record stock movement (SALE) and update branch balance
+      const ledger = await StockLedger.create(
+        [
+          {
+            medicineId,
+            locationId: branchId,
+            quantity: -Math.abs(Number(qtyInBase)),
+            transactionType: "SALE",
+            sourceDocType: "SALE",
+            sourceDocId: sale._id.toString(),
+            unitPrice: Number(price),
+            createdByUserId: req.user?.id,
+          },
+        ],
+        { session }
       );
+      await StockBalance.updateOne(
+        { medicineId, locationId: branchId },
+        {
+          $inc: { onHandQty: -Math.abs(Number(qtyInBase)) },
+          $set: { lastTxnAt: new Date(), lastTxnId: ledger[0]._id },
+        },
+        { upsert: true, session }
+      );
+
+      await session.commitTransaction();
+
+      res.status(201).json({
+        success: true,
+        message: "Sale recorded successfully",
+        sale,
+      });
+    } catch (txnErr) {
+      await session.abortTransaction();
+      throw txnErr;
+    } finally {
+      session.endSession();
     }
-
-    // Resolve unit conversion: treat branch stock quantities as base units
-    const q = Math.abs(Number(quantity));
-    if (!q || Number.isNaN(q))
-      return next(errorHandler(400, "Invalid quantity"));
-    // Fetch balance and use medicine to compute base quantity if selling in pack
-    const [bal] = await Promise.all([
-      StockBalance.findOne({ medicineId, locationId: branchId }),
-    ]);
-    const packSize = Number(medicine.packSize) || 0;
-    const isPack = unit && unit === (medicine.packUnit || "");
-    const qtyInBase = isPack && packSize > 0 ? q * packSize : q;
-    const onHand = bal?.onHandQty || 0;
-    if (onHand < qtyInBase) {
-      return next(errorHandler(400, "Insufficient branch stock"));
-    }
-
-    // Create sale record
-    const sale = new Sale({
-      medicineId,
-      medicineName: medicine.medicineName,
-      quantity: q,
-      price,
-      employeeId,
-      employeeName: employee.username,
-      branchId,
-      date: date ? new Date(date) : new Date(),
-      shift: shift || "morning",
-      unit: unit || medicine.baseUnit || medicine.unit, // for audit/tracking
-    });
-
-    await sale.save();
-
-    // Record stock movement (SALE) and update branch balance
-    const ledger = await StockLedger.create({
-      medicineId,
-      locationId: branchId,
-      quantity: -Math.abs(Number(qtyInBase)),
-      transactionType: "SALE",
-      sourceDocType: "SALE",
-      sourceDocId: sale._id.toString(),
-      unitPrice: Number(price),
-      createdByUserId: req.user?.id,
-    });
-    await StockBalance.updateOne(
-      { medicineId, locationId: branchId },
-      {
-        // Decrement by base-unit quantity to keep balances consistent
-        $inc: { onHandQty: -Math.abs(Number(qtyInBase)) },
-        $set: { lastTxnAt: new Date(), lastTxnId: ledger._id },
-      },
-      { upsert: true }
-    );
-
-    res.status(201).json({
-      success: true,
-      message: "Sale recorded successfully",
-      sale,
-    });
   } catch (error) {
     next(error);
   }
@@ -126,26 +151,34 @@ export const getDailySales = async (req, res, next) => {
       endDate.setHours(23, 59, 59, 999);
     }
 
-    const sales = await Sale.find({
-      branchId,
-      date: { $gte: startDate, $lte: endDate },
-    })
-      .populate("medicineId", "name")
-      .populate("employeeId", "username")
-      .sort({ createdAt: -1 });
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
+    const skip = (page - 1) * limit;
+    const filter = { branchId, date: { $gte: startDate, $lte: endDate } };
+    const [sales, totalCount] = await Promise.all([
+      Sale.find(filter)
+        .populate("medicineId", "medicineName")
+        .populate("employeeId", "username")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      Sale.countDocuments(filter),
+    ]);
 
     const totalAmount = sales.reduce(
       (sum, sale) => sum + sale.quantity * sale.price,
       0
     );
-    const totalTransactions = sales.length;
 
     res.json({
       success: true,
+      page,
+      limit,
+      totalCount,
       sales,
       summary: {
         totalAmount,
-        totalTransactions,
+        totalTransactions: sales.length,
         date: startDate.toISOString().split("T")[0],
       },
     });
@@ -172,13 +205,18 @@ export const getEmployeeSales = async (req, res, next) => {
       endDate.setHours(23, 59, 59, 999);
     }
 
-    const sales = await Sale.find({
-      branchId,
-      employeeId,
-      date: { $gte: startDate, $lte: endDate },
-    })
-      .populate("medicineId", "name")
-      .sort({ createdAt: -1 });
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
+    const skip = (page - 1) * limit;
+    const filter = { branchId, employeeId, date: { $gte: startDate, $lte: endDate } };
+    const [sales, totalCount] = await Promise.all([
+      Sale.find(filter)
+        .populate("medicineId", "medicineName")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      Sale.countDocuments(filter),
+    ]);
 
     const totalAmount = sales.reduce(
       (sum, sale) => sum + sale.quantity * sale.price,
@@ -187,6 +225,9 @@ export const getEmployeeSales = async (req, res, next) => {
 
     res.json({
       success: true,
+      page,
+      limit,
+      totalCount,
       sales,
       summary: {
         totalAmount,
@@ -224,12 +265,18 @@ export const getSalesSummary = async (req, res, next) => {
       end.setHours(23, 59, 59, 999);
     }
 
-    const sales = await Sale.find({
-      branchId,
-      date: { $gte: start, $lte: end },
-    })
-      .populate("employeeId", "username")
-      .sort({ date: -1 });
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
+    const skip = (page - 1) * limit;
+    const filter = { branchId, date: { $gte: start, $lte: end } };
+    const [sales, totalCount] = await Promise.all([
+      Sale.find(filter)
+        .populate("employeeId", "username")
+        .sort({ date: -1 })
+        .skip(skip)
+        .limit(limit),
+      Sale.countDocuments(filter),
+    ]);
 
     const summary = sales.reduce((acc, sale) => {
       const employeeName = sale.employeeName;
@@ -248,6 +295,9 @@ export const getSalesSummary = async (req, res, next) => {
 
     res.json({
       success: true,
+      page,
+      limit,
+      totalCount,
       summary,
       period: {
         start: start.toISOString().split("T")[0],

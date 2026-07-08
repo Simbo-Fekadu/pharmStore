@@ -32,17 +32,20 @@ import {
 
 const router = express.Router();
 
+// All routes require authentication
+router.use(verifyToken);
+
 // Add or update inventory for a location (requires inventory access)
-router.post("/upsert", verifyToken, requireInventoryAccess, upsertInventory);
+router.post("/upsert", requireInventoryAccess, upsertInventory);
 
 // Get inventory for a location
 router.get("/", getInventory);
 
 // Transfer medicine from store to branch (requires inventory access)
-router.post("/transfer", verifyToken, requireInventoryAccess, transferMedicine);
+router.post("/transfer", requireInventoryAccess, transferMedicine);
 
 // Branch creates a request (auth to capture user id)
-router.post("/request", verifyToken, createRequest);
+router.post("/request", createRequest);
 // List all requests
 router.get("/request", listRequests);
 // Get single request
@@ -50,37 +53,34 @@ router.get("/request/:id", getRequest);
 // Approve (fulfill) request (requires inventory access)
 router.post(
   "/request/:id/approve",
-  verifyToken,
   requireInventoryAccess,
   approveRequest
 );
 // Reject request (requires inventory access)
 router.post(
   "/request/:id/reject",
-  verifyToken,
   requireInventoryAccess,
   rejectRequest
 );
-// Cancel (branch) its own pending request - no auth currently, could add token later
+// Cancel (branch) its own pending request
 router.post("/request/:id/cancel", cancelRequest);
 // Add message to request thread
-router.post("/request/:id/message", verifyToken, addRequestMessage);
+router.post("/request/:id/message", addRequestMessage);
 
 // Branch owned medicines (stock currently at that branch)
 router.get("/branch/:branchId/medicines", getBranchMedicines);
 // Admin: clear branch medicines (delete StockBalance for branch or all)
 router.delete(
   "/branch/:branchId/medicines",
-  verifyToken,
   requireAdmin,
   clearBranchMedicines
 );
 
 // Ledger and stock balance endpoints
-router.post("/ledger", verifyToken, requireInventoryAccess, postLedger);
+router.post("/ledger", requireInventoryAccess, postLedger);
 router.get("/stock", getStock);
 router.get("/stock/central", getCentralAvailable);
-router.get("/ledger", verifyToken, attachPharmacyContext, getLedgerHistory);
+router.get("/ledger", attachPharmacyContext, getLedgerHistory);
 router.post(
   "/transfer/direct",
   verifyToken,

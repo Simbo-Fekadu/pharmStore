@@ -2,10 +2,15 @@ import bcrypt from "bcryptjs";
 import User from "../models/user.model.js";
 
 // Ensures required super admin (static credential per user request)
-// NOTE: This hardcoding is less secure; prefer env variables in production.
 export async function ensureSuperAdmin() {
-  const TARGET_EMAIL = process.env.SUPERADMIN_EMAIL || "simboadmin@gmail.com";
-  const TARGET_PASSWORD = process.env.SUPERADMIN_PASSWORD || "ih3ba3so";
+  const TARGET_EMAIL = process.env.SUPERADMIN_EMAIL;
+  const TARGET_PASSWORD = process.env.SUPERADMIN_PASSWORD;
+  if (!TARGET_EMAIL || !TARGET_PASSWORD) {
+    console.error(
+      "[SuperAdmin] FATAL: SUPERADMIN_EMAIL and SUPERADMIN_PASSWORD environment variables are required."
+    );
+    process.exit(1);
+  }
   let user = await User.findOne({ email: TARGET_EMAIL });
   if (user) {
     if (user.role !== "super_admin") {
@@ -41,8 +46,13 @@ export async function ensureSuperAdmin() {
 // - Optionally demotes other super_admin users (leave them intact for audit)
 // - Creates a fresh super_admin with the configured credentials
 export async function recreateSuperAdmin(options = {}) {
-  const TARGET_EMAIL = process.env.SUPERADMIN_EMAIL || "simboadmin@gmail.com";
-  const TARGET_PASSWORD = process.env.SUPERADMIN_PASSWORD || "ih3ba3so";
+  const TARGET_EMAIL = process.env.SUPERADMIN_EMAIL;
+  const TARGET_PASSWORD = process.env.SUPERADMIN_PASSWORD;
+  if (!TARGET_EMAIL || !TARGET_PASSWORD) {
+    throw new Error(
+      "SUPERADMIN_EMAIL and SUPERADMIN_PASSWORD environment variables are required"
+    );
+  }
   const { removeOthers = false } = options;
   // Delete primary target if exists
   await User.deleteOne({ email: TARGET_EMAIL });

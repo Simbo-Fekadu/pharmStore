@@ -3,7 +3,11 @@ import Supplier from "../models/supplier.model.js";
 // Create supplier
 export const createSupplier = async (req, res) => {
   try {
-    const body = { ...req.body };
+    const allowed = ["supplierName", "phoneNumber", "address"];
+    const body = {};
+    for (const field of allowed) {
+      if (req.body[field] !== undefined) body[field] = req.body[field];
+    }
     if (req.pharmacyId) body.pharmacy = req.pharmacyId;
     const supplier = new Supplier(body);
     await supplier.save();
@@ -48,9 +52,14 @@ export const getSupplier = async (req, res) => {
 // Update supplier
 export const updateSupplier = async (req, res) => {
   try {
+    const allowed = ["supplierName", "phoneNumber", "address"];
+    const update = {};
+    for (const field of allowed) {
+      if (req.body[field] !== undefined) update[field] = req.body[field];
+    }
     const q = { _id: req.params.id };
     if (req.pharmacyId) q.pharmacy = req.pharmacyId;
-    const supplier = await Supplier.findOneAndUpdate(q, req.body, {
+    const supplier = await Supplier.findOneAndUpdate(q, update, {
       new: true,
     });
     if (!supplier)

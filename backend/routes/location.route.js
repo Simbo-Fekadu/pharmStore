@@ -1,5 +1,5 @@
 import express from "express";
-import { verifyToken } from "../utils/verifyUser.js";
+import { verifyToken, requireAdmin } from "../utils/verifyUser.js";
 import { attachPharmacyContext } from "../middleware/pharmacyScope.js";
 import {
   createBranch,
@@ -18,18 +18,18 @@ const router = express.Router();
 
 router.use(verifyToken, attachPharmacyContext);
 
-// Branch routes
-router.post("/branch", createBranch);
+// Branch routes — mutations require admin
+router.post("/branch", requireAdmin, createBranch);
 router.get("/branch", getBranches);
 router.get("/branch/:id", getBranch);
-router.put("/branch/:id", updateBranch);
-router.delete("/branch/:id", deleteBranch);
+router.put("/branch/:id", requireAdmin, updateBranch);
+router.delete("/branch/:id", requireAdmin, deleteBranch);
 
-// Store routes
-router.post("/store", createStore);
+// Store routes — mutations require admin
+router.post("/store", requireAdmin, createStore);
 router.get("/store", getStores);
 router.get("/store/:id", getStore);
-router.put("/store/:id", updateStore);
-router.delete("/store/:id", deleteStore);
+router.put("/store/:id", requireAdmin, updateStore);
+router.delete("/store/:id", requireAdmin, deleteStore);
 
 export default router;
