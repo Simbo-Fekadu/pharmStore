@@ -12,6 +12,8 @@ const Logout = () => {
     setIsError(false);
     try {
       localStorage.removeItem("token");
+      localStorage.removeItem("role");
+      localStorage.removeItem("user");
       const res = await fetch(`${API_BASE}/auth/signout`, {
         method: "POST",
         credentials: "include",
