@@ -1,8 +1,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { authFetch } from "../api/authFetch";
 
-import { getApiBase } from "../api/base";
-const API = getApiBase() + "/backend";
+import { API_BASE } from "../api/base";
+const API = API_BASE;
 
 const AdminRequestCenter = () => {
   const [requests, setRequests] = useState([]);

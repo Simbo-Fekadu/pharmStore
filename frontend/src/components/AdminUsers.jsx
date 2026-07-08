@@ -1,10 +1,11 @@
 import { useEffect, useState, useCallback } from "react";
 import { Trash2, Edit3, Save, X } from "lucide-react";
-import { getApiBase } from "../api/base";
+import { API_BASE } from "../api/base";
 import useToast from "../hooks/useToast";
 import useConfirm from "../hooks/useConfirm";
 import { authFetch } from "../api/authFetch";
-const API = getApiBase() + "/backend";
+import { usePharmacy } from "../hooks/usePharmacy";
+const API = API_BASE;
 
 // Updated to single branch assignment (legacy multi-branch support removed)
 const AdminUsers = () => {
@@ -31,15 +32,14 @@ const AdminUsers = () => {
     password: "",
   });
   const [role, setRole] = useState(null);
-  const [pharmacies, setPharmacies] = useState([]);
-  const [pharmacyId, setPharmacyId] = useState("");
+  const { pharmacies, selectedPharmacyId, setSelectedPharmacyId } = usePharmacy();
 
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
       const qs =
-        role === "super_admin" && pharmacyId ? `?pharmacyId=${pharmacyId}` : "";
+        role === "super_admin" && selectedPharmacyId ? `?selectedPharmacyId=${selectedPharmacyId}` : "";
       const res = await authFetch(`${API}/user${qs}`);
       const data = await res.json();
       if (res.ok && data.success) setUsers(data.users || []);
@@ -49,12 +49,12 @@ const AdminUsers = () => {
     } finally {
       setLoading(false);
     }
-  }, [role, pharmacyId]);
+  }, [role, selectedPharmacyId]);
   const loadBranches = useCallback(async () => {
     try {
-      if (role === "super_admin" && pharmacyId) {
+      if (role === "super_admin" && selectedPharmacyId) {
         const res = await authFetch(
-          `${API}/superadmin/pharmacies/${pharmacyId}/branches`
+          `${API}/superadmin/pharmacies/${selectedPharmacyId}/branches`
         );
         const data = await res.json();
         if (res.ok && data.success && Array.isArray(data.branches))
@@ -68,34 +68,17 @@ const AdminUsers = () => {
     } catch {
       /* ignore */
     }
-  }, [role, pharmacyId]);
+  }, [role, selectedPharmacyId]);
 
   useEffect(() => {
     setRole(localStorage.getItem("role"));
   }, []);
-  // load pharmacies for super_admin
-  useEffect(() => {
-    const fetchPharmacies = async () => {
-      if (role !== "super_admin") return;
-      try {
-        const res = await authFetch(`${API}/superadmin/pharmacies`);
-        const data = await res.json();
-        if (res.ok && data.success && Array.isArray(data.pharmacies)) {
-          setPharmacies(data.pharmacies);
-          if (!pharmacyId && data.pharmacies[0]?._id)
-            setPharmacyId(data.pharmacies[0]._id);
-        }
-      } catch {
-        /* ignore */
-      }
-    };
-    fetchPharmacies();
-  }, [role, pharmacyId, load, loadBranches]);
+
   // Load users/branches when scope changes
   useEffect(() => {
     load();
     loadBranches();
-  }, [role, pharmacyId, load, loadBranches]);
+  }, [role, selectedPharmacyId, load, loadBranches]);
 
   const handleChange = (e) =>
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -114,9 +97,9 @@ const AdminUsers = () => {
       };
       // For super admin creating users within a selected pharmacy, prefer the dedicated endpoint
       let res;
-      if (role === "super_admin" && pharmacyId) {
+      if (role === "super_admin" && selectedPharmacyId) {
         res = await authFetch(
-          `${API}/superadmin/pharmacies/${pharmacyId}/users`,
+          `${API}/superadmin/pharmacies/${selectedPharmacyId}/users`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -254,8 +237,8 @@ const AdminUsers = () => {
           <div className="flex items-center gap-2">
             <span className="text-xs text-white/70">Pharmacy</span>
             <select
-              value={pharmacyId}
-              onChange={(e) => setPharmacyId(e.target.value)}
+              value={selectedPharmacyId}
+              onChange={(e) => setSelectedPharmacyId(e.target.value)}
               className="px-2 py-1.5 rounded bg-white/80 text-gray-800"
             >
               {pharmacies.map((p) => (

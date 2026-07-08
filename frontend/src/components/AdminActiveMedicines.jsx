@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import { authFetch } from "../api/authFetch";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
-import { getApiBase } from "../api/base";
-const API = getApiBase() + "/backend";
+import { API_BASE } from "../api/base";
+const API = API_BASE;
 
 const AdminActiveMedicines = () => {
   const [list, setList] = useState([]);

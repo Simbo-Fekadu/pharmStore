@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 
-import { getApiBase } from "../api/base";
+import { API_BASE } from "../api/base";
 import { authFetch } from "../api/authFetch";
-const API = getApiBase() + "/backend";
+const API = API_BASE;
 
 const AdminInventory = () => {
   const [inventory, setInventory] = useState([]);

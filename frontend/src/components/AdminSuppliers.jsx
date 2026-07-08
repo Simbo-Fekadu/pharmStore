@@ -1,10 +1,10 @@
 import { useEffect, useState, useCallback } from "react";
 import { Edit3, Save, X, Trash2 } from "lucide-react";
-import { getApiBase } from "../api/base";
+import { API_BASE } from "../api/base";
 import { authFetch } from "../api/authFetch";
 import useToast from "../hooks/useToast";
 import useConfirm from "../hooks/useConfirm";
-const API = getApiBase() + "/backend";
+const API = API_BASE;
 
 const empty = { supplierName: "", phoneNumber: "", address: "" };
 

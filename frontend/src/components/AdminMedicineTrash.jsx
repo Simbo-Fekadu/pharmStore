@@ -1,11 +1,12 @@
 import { useEffect, useState, useCallback } from "react";
 import { RotateCcw, Flame, FileX2, Skull, Trash2 } from "lucide-react";
 
-import { getApiBase } from "../api/base";
+import { API_BASE } from "../api/base";
 import useToast from "../hooks/useToast";
 import useConfirm from "../hooks/useConfirm";
 import { authFetch } from "../api/authFetch";
-const API = getApiBase() + "/backend";
+import { usePharmacy } from "../hooks/usePharmacy";
+const API = API_BASE;
 
 const AdminMedicineTrash = () => {
   const toast = useToast();
@@ -17,36 +18,17 @@ const AdminMedicineTrash = () => {
   const [isError, setIsError] = useState(false);
   const [tab, setTab] = useState("expired"); // expired | deleted
   const [role, setRole] = useState(null);
-  const [pharmacies, setPharmacies] = useState([]);
-  const [pharmacyId, setPharmacyId] = useState("");
-
   useEffect(() => {
     setRole(localStorage.getItem("role"));
   }, []);
 
-  useEffect(() => {
-    const fetchPharmacies = async () => {
-      if (role !== "super_admin") return;
-      try {
-        const res = await authFetch(`${API}/superadmin/pharmacies`);
-        const data = await res.json();
-        if (res.ok && data.success && Array.isArray(data.pharmacies)) {
-          setPharmacies(data.pharmacies);
-          if (!pharmacyId && data.pharmacies[0]?._id)
-            setPharmacyId(data.pharmacies[0]._id);
-        }
-      } catch {
-        /* ignore */
-      }
-    };
-    fetchPharmacies();
-  }, [role, pharmacyId]);
+  const { pharmacies, selectedPharmacyId, setSelectedPharmacyId } = usePharmacy();
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const qs =
-        role === "super_admin" && pharmacyId ? `&pharmacyId=${pharmacyId}` : "";
+        role === "super_admin" && selectedPharmacyId ? `&selectedPharmacyId=${selectedPharmacyId}` : "";
       const res = await authFetch(`${API}/medicine?includeDeleted=true${qs}`);
       const data = await res.json();
       if (res.ok && data.success) {
@@ -64,7 +46,7 @@ const AdminMedicineTrash = () => {
     } finally {
       setLoading(false);
     }
-  }, [role, pharmacyId]);
+  }, [role, selectedPharmacyId]);
   useEffect(() => {
     load();
   }, [load]);
@@ -72,7 +54,7 @@ const AdminMedicineTrash = () => {
   const restore = async (id) => {
     try {
       const qs =
-        role === "super_admin" && pharmacyId ? `?pharmacyId=${pharmacyId}` : "";
+        role === "super_admin" && selectedPharmacyId ? `?selectedPharmacyId=${selectedPharmacyId}` : "";
       const res = await authFetch(`${API}/medicine/${id}/restore${qs}`, {
         method: "POST",
       });
@@ -104,7 +86,7 @@ const AdminMedicineTrash = () => {
     if (!ok) return;
     try {
       const qs =
-        role === "super_admin" && pharmacyId ? `?pharmacyId=${pharmacyId}` : "";
+        role === "super_admin" && selectedPharmacyId ? `?selectedPharmacyId=${selectedPharmacyId}` : "";
       const res = await authFetch(`${API}/medicine/${id}/purge${qs}`, {
         method: "DELETE",
       });
@@ -137,8 +119,8 @@ const AdminMedicineTrash = () => {
             <div className="flex items-center gap-2">
               <span className="text-white/70">Pharmacy</span>
               <select
-                value={pharmacyId}
-                onChange={(e) => setPharmacyId(e.target.value)}
+                value={selectedPharmacyId}
+                onChange={(e) => setSelectedPharmacyId(e.target.value)}
                 className="px-2 py-1.5 rounded bg-white/80 text-gray-800"
               >
                 {pharmacies.map((p) => (
