@@ -37,7 +37,7 @@ router.post(
 );
 // List requires auth to properly scope by pharmacy
 router.get("/", verifyToken, attachPharmacyContext, getMedicines);
-router.get("/active/list", getActiveMedicines);
+router.get("/active/list", verifyToken, attachPharmacyContext, getActiveMedicines);
 router.post(
   "/import",
   verifyToken,
