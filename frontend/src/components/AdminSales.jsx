@@ -288,7 +288,7 @@ const AdminSales = () => {
                                 });
                                 const data = await res.json();
                                 if (res.ok && data.success) {
-                                  loadSales();
+                                  load();
                                 } else {
                                   alert(data.message || "Refund failed");
                                 }
