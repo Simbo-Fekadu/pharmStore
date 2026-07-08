@@ -113,14 +113,11 @@ const BranchRequest = () => {
       return;
     }
     try {
-      const token = localStorage.getItem("token");
       const res = await authFetch(`${API}/inventory/request`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        credentials: "include",
         body: JSON.stringify({
           medicineId: form.medicineId,
           quantity: Number(form.quantity),

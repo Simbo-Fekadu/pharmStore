@@ -36,6 +36,8 @@ const Sidebar = () => {
         <button
           onClick={() => {
             localStorage.removeItem("token");
+            localStorage.removeItem("role");
+            localStorage.removeItem("user");
             navigate("/signin");
           }}
           className="w-full bg-[var(--brand)] hover:bg-[var(--brand-hover)] text-white font-semibold py-2 rounded transition"
