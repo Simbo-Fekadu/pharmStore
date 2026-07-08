@@ -246,7 +246,10 @@ export const createMedicine = async (req, res) => {
         else delete body.supplier;
       } else {
         const sup = await Supplier.findOne({
-          supplierName: { $regex: `^${raw}$`, $options: "i" },
+          supplierName: {
+            $regex: `^${raw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
+            $options: "i",
+          },
         });
         if (sup) body.supplier = sup._id;
         else {
@@ -387,7 +390,10 @@ export const updateMedicine = async (req, res) => {
           else delete update.supplier;
         } else {
           const sup = await Supplier.findOne({
-            supplierName: { $regex: `^${trimmed}$`, $options: "i" },
+            supplierName: {
+              $regex: `^${trimmed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
+              $options: "i",
+            },
           });
           if (sup) update.supplier = sup._id;
           else {

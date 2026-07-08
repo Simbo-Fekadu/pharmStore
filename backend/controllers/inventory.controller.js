@@ -354,59 +354,85 @@ export const directTransfer = async (req, res, next) => {
       return res
         .status(400)
         .json({ success: false, message: "quantity must be > 0" });
-    const [store, branch, med] = await Promise.all([
-      Store.findById(storeId),
-      Branch.findById(branchId),
-      Medicine.findById(medicineId),
-    ]);
-    if (!store || !branch || !med)
-      return res.status(400).json({ success: false, message: "Invalid refs" });
-    const sourceBal = await StockBalance.findOne({
-      medicineId,
-      locationId: storeId,
-    });
-    if (!sourceBal || (sourceBal.onHandQty || 0) < qty)
-      return res
-        .status(409)
-        .json({ success: false, message: "Insufficient central stock" });
-    const correlationId = `DIRECT-${Date.now()}`;
-    const outLine = await StockLedger.create({
-      medicineId,
-      locationId: storeId,
-      quantity: -qty,
-      transactionType: "TRANSFER_OUT",
-      sourceDocType: "DIRECT",
-      sourceDocId: correlationId,
-      correlationId,
-      createdByUserId: req.user?.id,
-    });
-    const inLine = await StockLedger.create({
-      medicineId,
-      locationId: branchId,
-      quantity: qty,
-      transactionType: "TRANSFER_IN",
-      sourceDocType: "DIRECT",
-      sourceDocId: correlationId,
-      correlationId,
-      createdByUserId: req.user?.id,
-    });
-    await StockBalance.updateOne(
-      { medicineId, locationId: storeId },
-      {
-        $inc: { onHandQty: -qty },
-        $set: { lastTxnAt: new Date(), lastTxnId: outLine._id },
-      },
-      { upsert: true }
-    );
-    await StockBalance.updateOne(
-      { medicineId, locationId: branchId },
-      {
-        $inc: { onHandQty: qty },
-        $set: { lastTxnAt: new Date(), lastTxnId: inLine._id },
-      },
-      { upsert: true }
-    );
-    res.json({ success: true, message: "Transferred", correlationId });
+    const session = await mongoose.startSession();
+    try {
+      session.startTransaction();
+      const [store, branch, med] = await Promise.all([
+        Store.findById(storeId).session(session),
+        Branch.findById(branchId).session(session),
+        Medicine.findById(medicineId).session(session),
+      ]);
+      if (!store || !branch || !med) {
+        await session.abortTransaction();
+        return res
+          .status(400)
+          .json({ success: false, message: "Invalid refs" });
+      }
+      const sourceBal = await StockBalance.findOne({
+        medicineId,
+        locationId: storeId,
+      }).session(session);
+      if (!sourceBal || (sourceBal.onHandQty || 0) < qty) {
+        await session.abortTransaction();
+        return res
+          .status(409)
+          .json({ success: false, message: "Insufficient central stock" });
+      }
+      const correlationId = `DIRECT-${Date.now()}`;
+      const outLine = await StockLedger.create(
+        [
+          {
+            medicineId,
+            locationId: storeId,
+            quantity: -qty,
+            transactionType: "TRANSFER_OUT",
+            sourceDocType: "DIRECT",
+            sourceDocId: correlationId,
+            correlationId,
+            createdByUserId: req.user?.id,
+          },
+        ],
+        { session }
+      );
+      const inLine = await StockLedger.create(
+        [
+          {
+            medicineId,
+            locationId: branchId,
+            quantity: qty,
+            transactionType: "TRANSFER_IN",
+            sourceDocType: "DIRECT",
+            sourceDocId: correlationId,
+            correlationId,
+            createdByUserId: req.user?.id,
+          },
+        ],
+        { session }
+      );
+      await StockBalance.updateOne(
+        { medicineId, locationId: storeId },
+        {
+          $inc: { onHandQty: -qty },
+          $set: { lastTxnAt: new Date(), lastTxnId: outLine[0]._id },
+        },
+        { upsert: true, session }
+      );
+      await StockBalance.updateOne(
+        { medicineId, locationId: branchId },
+        {
+          $inc: { onHandQty: qty },
+          $set: { lastTxnAt: new Date(), lastTxnId: inLine[0]._id },
+        },
+        { upsert: true, session }
+      );
+      await session.commitTransaction();
+      res.json({ success: true, message: "Transferred", correlationId });
+    } catch (txnErr) {
+      await session.abortTransaction();
+      throw txnErr;
+    } finally {
+      session.endSession();
+    }
   } catch (err) {
     next(err);
   }
@@ -556,14 +582,13 @@ export const getInventory = async (req, res, next) => {
 // Transfer medicine from store to branch
 export const transferMedicine = async (req, res, next) => {
   try {
-    // NOTE: This endpoint is now ledger-based. The previous implementation
-    // modified the legacy Inventory collection only, which meant the new
-    // aggregation (initial/current quantities derived from StockLedger) never
-    // saw the TRANSFER_OUT movement, leaving currentQuantity equal to initial.
-    // We now create proper ledger entries (out from store, in to branch) and
-    // update StockBalance so real-time quantities & derived metrics adjust.
-    const { medicineId, fromLocationId, toLocationId, quantity, batchNumber } =
-      req.body;
+    const {
+      medicineId,
+      fromLocationId,
+      toLocationId,
+      quantity,
+      batchNumber,
+    } = req.body;
     if (!medicineId || !fromLocationId || !toLocationId || !quantity) {
       return res.status(400).json({
         success: false,
@@ -576,76 +601,94 @@ export const transferMedicine = async (req, res, next) => {
         .status(400)
         .json({ success: false, message: "quantity must be > 0" });
     }
+    const session = await mongoose.startSession();
+    try {
+      session.startTransaction();
 
-    // Validate refs (store as source, branch as destination)
-    const [store, branch, med] = await Promise.all([
-      Store.findById(fromLocationId),
-      Branch.findById(toLocationId),
-      Medicine.findById(medicineId),
-    ]);
-    if (!store || !branch || !med) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Invalid store/branch/medicine" });
+      const [store, branch, med] = await Promise.all([
+        Store.findById(fromLocationId).session(session),
+        Branch.findById(toLocationId).session(session),
+        Medicine.findById(medicineId).session(session),
+      ]);
+      if (!store || !branch || !med) {
+        await session.abortTransaction();
+        return res
+          .status(400)
+          .json({ success: false, message: "Invalid store/branch/medicine" });
+      }
+
+      const sourceBal = await StockBalance.findOne({
+        medicineId,
+        locationId: fromLocationId,
+      }).session(session);
+      if (!sourceBal || (sourceBal.onHandQty || 0) < qty) {
+        await session.abortTransaction();
+        return res
+          .status(409)
+          .json({ success: false, message: "Insufficient central stock" });
+      }
+
+      const correlationId = `LEGACY-XFER-${Date.now()}`;
+      const outLine = await StockLedger.create(
+        [
+          {
+            medicineId,
+            locationId: fromLocationId,
+            quantity: -qty,
+            transactionType: "TRANSFER_OUT",
+            sourceDocType: "LEGACY_TRANSFER",
+            sourceDocId: correlationId,
+            correlationId,
+            createdByUserId: req.user?.id,
+          },
+        ],
+        { session }
+      );
+      const inLine = await StockLedger.create(
+        [
+          {
+            medicineId,
+            locationId: toLocationId,
+            quantity: qty,
+            transactionType: "TRANSFER_IN",
+            sourceDocType: "LEGACY_TRANSFER",
+            sourceDocId: correlationId,
+            correlationId,
+            createdByUserId: req.user?.id,
+          },
+        ],
+        { session }
+      );
+
+      await StockBalance.updateOne(
+        { medicineId, locationId: fromLocationId },
+        {
+          $inc: { onHandQty: -qty },
+          $set: { lastTxnAt: new Date(), lastTxnId: outLine[0]._id },
+        },
+        { upsert: true, session }
+      );
+      await StockBalance.updateOne(
+        { medicineId, locationId: toLocationId },
+        {
+          $inc: { onHandQty: qty },
+          $set: { lastTxnAt: new Date(), lastTxnId: inLine[0]._id },
+        },
+        { upsert: true, session }
+      );
+
+      await session.commitTransaction();
+      res.status(200).json({
+        success: true,
+        message: "Transfer successful (ledger)",
+        correlationId,
+      });
+    } catch (txnErr) {
+      await session.abortTransaction();
+      throw txnErr;
+    } finally {
+      session.endSession();
     }
-
-    // Check central (store) balance
-    const sourceBal = await StockBalance.findOne({
-      medicineId,
-      locationId: fromLocationId,
-    });
-    if (!sourceBal || (sourceBal.onHandQty || 0) < qty) {
-      return res
-        .status(409)
-        .json({ success: false, message: "Insufficient central stock" });
-    }
-
-    const correlationId = `LEGACY-XFER-${Date.now()}`;
-    const outLine = await StockLedger.create({
-      medicineId,
-      locationId: fromLocationId,
-      quantity: -qty,
-      transactionType: "TRANSFER_OUT",
-      sourceDocType: "LEGACY_TRANSFER",
-      sourceDocId: correlationId,
-      correlationId,
-      batchId: batchNumber ? undefined : undefined, // placeholder if batch linkage added later
-      createdByUserId: req.user?.id,
-    });
-    const inLine = await StockLedger.create({
-      medicineId,
-      locationId: toLocationId,
-      quantity: qty,
-      transactionType: "TRANSFER_IN",
-      sourceDocType: "LEGACY_TRANSFER",
-      sourceDocId: correlationId,
-      correlationId,
-      batchId: batchNumber ? undefined : undefined,
-      createdByUserId: req.user?.id,
-    });
-
-    await StockBalance.updateOne(
-      { medicineId, locationId: fromLocationId },
-      {
-        $inc: { onHandQty: -qty },
-        $set: { lastTxnAt: new Date(), lastTxnId: outLine._id },
-      },
-      { upsert: true }
-    );
-    await StockBalance.updateOne(
-      { medicineId, locationId: toLocationId },
-      {
-        $inc: { onHandQty: qty },
-        $set: { lastTxnAt: new Date(), lastTxnId: inLine._id },
-      },
-      { upsert: true }
-    );
-
-    res.status(200).json({
-      success: true,
-      message: "Transfer successful (ledger)",
-      correlationId,
-    });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
   }
@@ -710,7 +753,7 @@ export const createRequest = async (req, res) => {
       });
       available = bal?.onHandQty || 0;
     }
-    if (Number(quantity) > available && available > 0) {
+    if (Number(quantity) > available) {
       return res.status(400).json({
         success: false,
         message: `Quantity exceeds available central stock (${available})`,
@@ -838,130 +881,158 @@ export const approveRequest = async (req, res) => {
       return res
         .status(400)
         .json({ success: false, message: "Request already processed" });
-    // Determine central store automatically (first store document) instead of requiring storeId from client
     const centralStore = await Store.findOne();
     if (!centralStore)
       return res
         .status(400)
         .json({ success: false, message: "No central store configured" });
     const storeId = centralStore._id;
-    // Prevent negative with balance check
-    let sourceBal = await StockBalance.findOne({
-      medicineId: request.medicine,
-      locationId: storeId,
-    });
-    let available = sourceBal?.onHandQty || 0;
-    // Extended fallback chain:
-    // 1. If no StockBalance doc, derive net from ledger history
-    // 2. If ledger net zero, try legacy Inventory doc
-    // 3. If still zero, try legacy Medicine.quantity (pre-migration)
-    if (!sourceBal) {
-      const net = await StockLedger.aggregate([
-        {
-          $match: {
-            locationId: storeId,
-            medicineId: request.medicine,
-          },
-        },
-        { $group: { _id: "$medicineId", qty: { $sum: "$quantity" } } },
-      ]);
-      if (net.length) available = net[0].qty || 0;
-      if (available <= 0) {
-        const legacyInv = await Inventory.findOne({
-          medicine: request.medicine,
-          locationType: "Store",
-          locationId: storeId,
-        });
-        if (legacyInv && legacyInv.quantity > 0) available = legacyInv.quantity;
+
+    const session = await mongoose.startSession();
+    try {
+      session.startTransaction();
+
+      // Re-read request inside transaction for atomicity
+      const txnRequest = await Request.findById(id).session(session);
+      if (!txnRequest || txnRequest.status !== "Pending") {
+        await session.abortTransaction();
+        return res
+          .status(400)
+          .json({ success: false, message: "Request already processed" });
       }
-      if (available <= 0) {
-        const legacyMed = await Medicine.findById(request.medicine).lean();
-        if (
-          legacyMed &&
-          typeof legacyMed.quantity === "number" &&
-          legacyMed.quantity > 0
-        ) {
-          available = legacyMed.quantity;
+
+      // Check balance inside transaction with snapshot isolation
+      let sourceBal = await StockBalance.findOne({
+        medicineId: txnRequest.medicine,
+        locationId: storeId,
+      }).session(session);
+      let available = sourceBal?.onHandQty || 0;
+
+      if (!sourceBal) {
+        const net = await StockLedger.aggregate([
+          {
+            $match: {
+              locationId: storeId,
+              medicineId: txnRequest.medicine,
+            },
+          },
+          { $group: { _id: "$medicineId", qty: { $sum: "$quantity" } } },
+        ]).session(session);
+        if (net.length) available = net[0].qty || 0;
+        if (available <= 0) {
+          const legacyInv = await Inventory.findOne({
+            medicine: txnRequest.medicine,
+            locationType: "Store",
+            locationId: storeId,
+          }).session(session);
+          if (legacyInv && legacyInv.quantity > 0)
+            available = legacyInv.quantity;
+        }
+        if (available <= 0) {
+          const legacyMed = await Medicine.findById(
+            txnRequest.medicine
+          ).session(session);
+          if (
+            legacyMed &&
+            typeof legacyMed.quantity === "number" &&
+            legacyMed.quantity > 0
+          ) {
+            available = legacyMed.quantity;
+          }
         }
       }
-    }
-    if (available < request.quantity) {
-      return res.status(400).json({
-        success: false,
-        message: "Insufficient central stock",
-        available,
-        needed: request.quantity,
-      });
-    }
-    // Ensure a StockBalance doc exists before decrement (so it won't start negative)
-    if (!sourceBal) {
-      await StockBalance.updateOne(
-        { medicineId: request.medicine, locationId: storeId },
-        {
-          $setOnInsert: { onHandQty: available },
-        },
-        { upsert: true }
+
+      if (available < txnRequest.quantity) {
+        await session.abortTransaction();
+        return res.status(400).json({
+          success: false,
+          message: "Insufficient central stock",
+          available,
+          needed: txnRequest.quantity,
+        });
+      }
+
+      if (!sourceBal) {
+        await StockBalance.updateOne(
+          { medicineId: txnRequest.medicine, locationId: storeId },
+          { $setOnInsert: { onHandQty: available } },
+          { upsert: true, session }
+        );
+      }
+
+      const correlationId = `REQ-${id}`;
+      const outLine = await StockLedger.create(
+        [
+          {
+            medicineId: txnRequest.medicine,
+            locationId: storeId,
+            quantity: -Math.abs(txnRequest.quantity),
+            transactionType: "TRANSFER_OUT",
+            sourceDocType: "REQUEST",
+            sourceDocId: id,
+            correlationId,
+            createdByUserId: req.user?.id,
+          },
+        ],
+        { session }
       );
-      sourceBal = await StockBalance.findOne({
-        medicineId: request.medicine,
-        locationId: storeId,
-      });
+      const inLine = await StockLedger.create(
+        [
+          {
+            medicineId: txnRequest.medicine,
+            locationId: txnRequest.branch,
+            quantity: Math.abs(txnRequest.quantity),
+            transactionType: "TRANSFER_IN",
+            sourceDocType: "REQUEST",
+            sourceDocId: id,
+            correlationId,
+            createdByUserId: req.user?.id,
+          },
+        ],
+        { session }
+      );
+
+      await StockBalance.updateOne(
+        { medicineId: txnRequest.medicine, locationId: storeId },
+        {
+          $inc: { onHandQty: -Math.abs(txnRequest.quantity) },
+          $set: { lastTxnAt: new Date(), lastTxnId: outLine[0]._id },
+        },
+        { upsert: true, session }
+      );
+      await Inventory.updateOne(
+        {
+          medicine: txnRequest.medicine,
+          locationType: "Store",
+          locationId: storeId,
+        },
+        { $inc: { quantity: -Math.abs(txnRequest.quantity) } }
+      ).session(session);
+      await StockBalance.updateOne(
+        { medicineId: txnRequest.medicine, locationId: txnRequest.branch },
+        {
+          $inc: { onHandQty: Math.abs(txnRequest.quantity) },
+          $set: { lastTxnAt: new Date(), lastTxnId: inLine[0]._id },
+        },
+        { upsert: true, session }
+      );
+
+      txnRequest.status = "Fulfilled";
+      txnRequest.fulfilledAt = new Date();
+      if (req.user?.id) txnRequest.approvedByUserId = req.user.id;
+      await txnRequest.save({ session });
+
+      await session.commitTransaction();
+
+      res
+        .status(200)
+        .json({ success: true, message: "Request fulfilled", request: txnRequest });
+    } catch (txnErr) {
+      await session.abortTransaction();
+      throw txnErr;
+    } finally {
+      session.endSession();
     }
-    const correlationId = `REQ-${id}`;
-    const outLine = await StockLedger.create({
-      medicineId: request.medicine,
-      locationId: storeId,
-      quantity: -Math.abs(request.quantity),
-      transactionType: "TRANSFER_OUT",
-      sourceDocType: "REQUEST",
-      sourceDocId: id,
-      correlationId,
-      createdByUserId: req.user?.id,
-    });
-    const inLine = await StockLedger.create({
-      medicineId: request.medicine,
-      locationId: request.branch,
-      quantity: Math.abs(request.quantity),
-      transactionType: "TRANSFER_IN",
-      sourceDocType: "REQUEST",
-      sourceDocId: id,
-      correlationId,
-      createdByUserId: req.user?.id,
-    });
-    await StockBalance.updateOne(
-      { medicineId: request.medicine, locationId: storeId },
-      {
-        $inc: { onHandQty: -Math.abs(request.quantity) },
-        $set: { lastTxnAt: new Date(), lastTxnId: outLine._id },
-      },
-      { upsert: true }
-    );
-    // If legacy inventory exists, decrement it as well to keep it roughly in sync until fully deprecated
-    await Inventory.updateOne(
-      {
-        medicine: request.medicine,
-        locationType: "Store",
-        locationId: storeId,
-      },
-      { $inc: { quantity: -Math.abs(request.quantity) } }
-    );
-    await StockBalance.updateOne(
-      { medicineId: request.medicine, locationId: request.branch },
-      {
-        $inc: { onHandQty: Math.abs(request.quantity) },
-        $set: { lastTxnAt: new Date(), lastTxnId: inLine._id },
-      },
-      { upsert: true }
-    );
-
-    request.status = "Fulfilled";
-    request.fulfilledAt = new Date();
-    if (req.user?.id) request.approvedByUserId = req.user.id;
-    await request.save();
-
-    res
-      .status(200)
-      .json({ success: true, message: "Request fulfilled", request });
   } catch (e) {
     res.status(400).json({ success: false, message: e.message });
   }
@@ -1173,63 +1244,87 @@ export const employeeAddBranchMedicine = async (req, res) => {
         .json({ success: false, message: "Central store missing" });
     }
     const qty = Math.abs(Number(quantity));
-    // Strict central stock enforcement
-    const centralBal = await StockBalance.findOne({
-      medicineId,
-      locationId: central._id,
-    });
-    if (!centralBal || centralBal.onHandQty < qty) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Insufficient central store stock" });
+
+    const session = await mongoose.startSession();
+    try {
+      session.startTransaction();
+
+      const centralBal = await StockBalance.findOne({
+        medicineId,
+        locationId: central._id,
+      }).session(session);
+      if (!centralBal || centralBal.onHandQty < qty) {
+        await session.abortTransaction();
+        return res
+          .status(400)
+          .json({ success: false, message: "Insufficient central store stock" });
+      }
+
+      const outLedger = await StockLedger.create(
+        [
+          {
+            medicineId,
+            locationId: central._id,
+            quantity: -qty,
+            transactionType: "TRANSFER_OUT",
+            createdByUserId: user.id,
+            notes: reason || undefined,
+          },
+        ],
+        { session }
+      );
+      await StockBalance.updateOne(
+        { medicineId, locationId: central._id },
+        {
+          $inc: { onHandQty: -qty },
+          $set: { lastTxnAt: new Date(), lastTxnId: outLedger[0]._id },
+        },
+        { upsert: true, session }
+      );
+
+      const inLedger = await StockLedger.create(
+        [
+          {
+            medicineId,
+            locationId: user.branch,
+            quantity: qty,
+            transactionType: "TRANSFER_IN",
+            createdByUserId: user.id,
+            notes: reason || undefined,
+          },
+        ],
+        { session }
+      );
+      await StockBalance.updateOne(
+        { medicineId, locationId: user.branch },
+        {
+          $inc: { onHandQty: qty },
+          $set: { lastTxnAt: new Date(), lastTxnId: inLedger[0]._id },
+        },
+        { upsert: true, session }
+      );
+
+      await session.commitTransaction();
+
+      logSyntheticTransfer("single_transfer", user.id, {
+        medicineId,
+        qty,
+        branch: user.branch,
+        out: outLedger[0]._id,
+        in: inLedger[0]._id,
+      });
+      return res.status(201).json({
+        success: true,
+        message: "Branch medicine added",
+        transferOut: outLedger[0]._id,
+        transferIn: inLedger[0]._id,
+      });
+    } catch (txnErr) {
+      await session.abortTransaction();
+      throw txnErr;
+    } finally {
+      session.endSession();
     }
-    // Create transfer out (store)
-    const outLedger = await StockLedger.create({
-      medicineId,
-      locationId: central._id,
-      quantity: -qty,
-      transactionType: "TRANSFER_OUT",
-      createdByUserId: user.id,
-      notes: reason || undefined,
-    });
-    await StockBalance.updateOne(
-      { medicineId, locationId: central._id },
-      {
-        $inc: { onHandQty: -qty },
-        $set: { lastTxnAt: new Date(), lastTxnId: outLedger._id },
-      },
-      { upsert: true }
-    );
-    // Create transfer in (branch)
-    const inLedger = await StockLedger.create({
-      medicineId,
-      locationId: user.branch,
-      quantity: qty,
-      transactionType: "TRANSFER_IN",
-      createdByUserId: user.id,
-      notes: reason || undefined,
-    });
-    await StockBalance.updateOne(
-      { medicineId, locationId: user.branch },
-      {
-        $inc: { onHandQty: qty },
-        $set: { lastTxnAt: new Date(), lastTxnId: inLedger._id },
-      },
-      { upsert: true }
-    );
-    logSyntheticTransfer("single_transfer", user.id, {
-      medicineId,
-      qty,
-      branch: user.branch,
-      out: outLedger._id,
-      in: inLedger._id,
-    });
-    return res.status(201).json({
-      success: true,
-      message: "Branch medicine added",
-      transferOut: outLedger._id,
-      transferIn: inLedger._id,
-    });
   } catch (e) {
     return res.status(400).json({ success: false, message: e.message });
   }
@@ -1262,91 +1357,110 @@ export const employeeAddBranchMedicinesBatch = async (req, res) => {
         .status(500)
         .json({ success: false, message: "Central store missing" });
     const results = [];
-    for (const entry of items) {
-      try {
-        const { medicineId, quantity, reason } = entry || {};
-        if (!medicineId || !quantity || Number(quantity) <= 0) {
+      for (const entry of items) {
+        const itemSession = await mongoose.startSession();
+        try {
+          itemSession.startTransaction();
+          const { medicineId, quantity, reason } = entry || {};
+          if (!medicineId || !quantity || Number(quantity) <= 0) {
+            results.push({
+              medicineId,
+              success: false,
+              error: "Invalid medicineId/quantity",
+            });
+            await itemSession.abortTransaction();
+            continue;
+          }
+          const med = await Medicine.findById(medicineId).session(itemSession);
+          if (!med || med.isDeleted) {
+            results.push({
+              medicineId,
+              success: false,
+              error: "Medicine not found",
+            });
+            await itemSession.abortTransaction();
+            continue;
+          }
+          const qty = Math.abs(Number(quantity));
+          const centralBal = await StockBalance.findOne({
+            medicineId,
+            locationId: central._id,
+          }).session(itemSession);
+          if (!centralBal || centralBal.onHandQty < qty) {
+            results.push({
+              medicineId,
+              success: false,
+              error: "Insufficient central stock",
+            });
+            await itemSession.abortTransaction();
+            continue;
+          }
+          const outLedger = await StockLedger.create(
+            [
+              {
+                medicineId,
+                locationId: central._id,
+                quantity: -qty,
+                transactionType: "TRANSFER_OUT",
+                createdByUserId: user.id,
+                notes: reason || undefined,
+              },
+            ],
+            { session: itemSession }
+          );
+          await StockBalance.updateOne(
+            { medicineId, locationId: central._id },
+            {
+              $inc: { onHandQty: -qty },
+              $set: { lastTxnAt: new Date(), lastTxnId: outLedger[0]._id },
+            },
+            { upsert: true, session: itemSession }
+          );
+          const inLedger = await StockLedger.create(
+            [
+              {
+                medicineId,
+                locationId: user.branch,
+                quantity: qty,
+                transactionType: "TRANSFER_IN",
+                createdByUserId: user.id,
+                notes: reason || undefined,
+              },
+            ],
+            { session: itemSession }
+          );
+          await StockBalance.updateOne(
+            { medicineId, locationId: user.branch },
+            {
+              $inc: { onHandQty: qty },
+              $set: { lastTxnAt: new Date(), lastTxnId: inLedger[0]._id },
+            },
+            { upsert: true, session: itemSession }
+          );
+          await itemSession.commitTransaction();
           results.push({
             medicineId,
-            success: false,
-            error: "Invalid medicineId/quantity",
+            success: true,
+            transferOut: outLedger[0]._id,
+            transferIn: inLedger[0]._id,
           });
-          continue;
-        }
-        const med = await Medicine.findById(medicineId);
-        if (!med || med.isDeleted) {
-          results.push({
+          logSyntheticTransfer("batch_transfer_item", user.id, {
             medicineId,
-            success: false,
-            error: "Medicine not found",
+            qty,
+            out: outLedger[0]._id,
+            in: inLedger[0]._id,
           });
-          continue;
-        }
-        const qty = Math.abs(Number(quantity));
-        const centralBal = await StockBalance.findOne({
-          medicineId,
-          locationId: central._id,
-        });
-        if (!centralBal || centralBal.onHandQty < qty) {
+        } catch (innerErr) {
+          await itemSession.abortTransaction();
           results.push({
-            medicineId,
+            medicineId: entry?.medicineId,
             success: false,
-            error: "Insufficient central stock",
+            error: innerErr.message,
           });
-          continue;
+        } finally {
+          itemSession.endSession();
         }
-        const outLedger = await StockLedger.create({
-          medicineId,
-          locationId: central._id,
-          quantity: -qty,
-          transactionType: "TRANSFER_OUT",
-          createdByUserId: user.id,
-          notes: reason || undefined,
-        });
-        await StockBalance.updateOne(
-          { medicineId, locationId: central._id },
-          {
-            $inc: { onHandQty: -qty },
-            $set: { lastTxnAt: new Date(), lastTxnId: outLedger._id },
-          },
-          { upsert: true }
-        );
-        const inLedger = await StockLedger.create({
-          medicineId,
-          locationId: user.branch,
-          quantity: qty,
-          transactionType: "TRANSFER_IN",
-          createdByUserId: user.id,
-          notes: reason || undefined,
-        });
-        await StockBalance.updateOne(
-          { medicineId, locationId: user.branch },
-          {
-            $inc: { onHandQty: qty },
-            $set: { lastTxnAt: new Date(), lastTxnId: inLedger._id },
-          },
-          { upsert: true }
-        );
-        results.push({
-          medicineId,
-          success: true,
-          transferOut: outLedger._id,
-          transferIn: inLedger._id,
-        });
-        logSyntheticTransfer("batch_transfer_item", user.id, {
-          medicineId,
-          qty,
-          out: outLedger._id,
-          in: inLedger._id,
-        });
-      } catch (innerErr) {
-        results.push({
-          medicineId: entry?.medicineId,
-          success: false,
-          error: innerErr.message,
-        });
       }
-    }
     logSyntheticTransfer("batch_transfer_complete", user.id, {
       count: results.length,
     });
