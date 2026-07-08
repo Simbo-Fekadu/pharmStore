@@ -717,35 +717,36 @@ export const approveRequest = async (req, res, next) => {
         return next(errorHandler(400, "Insufficient central stock"));
       }
 
+      const qty = Math.abs(txnRequest.quantity);
       const correlationId = `REQ-${id}`;
       const outLine = await StockLedger.create(
-        [{ medicineId: txnRequest.medicine, locationId: storeId, quantity: -Math.abs(txnRequest.quantity), transactionType: "TRANSFER_OUT", sourceDocType: "REQUEST", sourceDocId: id, correlationId, createdByUserId: req.user?.id }],
+        [{ medicineId: txnRequest.medicine, locationId: storeId, quantity: -qty, transactionType: "TRANSFER_OUT", sourceDocType: "REQUEST", sourceDocId: id, correlationId, createdByUserId: req.user?.id }],
         { session }
       );
       const inLine = await StockLedger.create(
-        [{ medicineId: txnRequest.medicine, locationId: txnRequest.branch, quantity: Math.abs(txnRequest.quantity), transactionType: "TRANSFER_IN", sourceDocType: "REQUEST", sourceDocId: id, correlationId, createdByUserId: req.user?.id }],
+        [{ medicineId: txnRequest.medicine, locationId: txnRequest.branch, quantity: qty, transactionType: "TRANSFER_IN", sourceDocType: "REQUEST", sourceDocId: id, correlationId, createdByUserId: req.user?.id }],
         { session }
       );
 
       await StockBalance.updateOne(
         { medicineId: txnRequest.medicine, locationId: storeId },
-        { $inc: { onHandQty: -Math.abs(txnRequest.quantity) }, $set: { lastTxnAt: new Date(), lastTxnId: outLine[0]._id } },
+        { $inc: { onHandQty: -qty }, $set: { lastTxnAt: new Date(), lastTxnId: outLine[0]._id } },
         { upsert: true, session }
       );
+      // Branch stock goes to reservedQty (in-transit) until receipt confirmed
       await StockBalance.updateOne(
         { medicineId: txnRequest.medicine, locationId: txnRequest.branch },
-        { $inc: { onHandQty: Math.abs(txnRequest.quantity) }, $set: { lastTxnAt: new Date(), lastTxnId: inLine[0]._id } },
+        { $inc: { reservedQty: qty }, $set: { lastTxnAt: new Date(), lastTxnId: inLine[0]._id } },
         { upsert: true, session }
       );
 
-      txnRequest.status = "Fulfilled";
-      txnRequest.fulfilledAt = new Date();
+      txnRequest.status = "Shipped";
       if (req.user?.id) txnRequest.approvedByUserId = req.user.id;
       await txnRequest.save({ session });
 
       await session.commitTransaction();
 
-      res.status(200).json({ success: true, message: "Request fulfilled", request: txnRequest });
+      res.status(200).json({ success: true, message: "Request shipped", request: txnRequest });
     } catch (txnErr) {
       await session.abortTransaction();
       throw txnErr;
@@ -753,7 +754,7 @@ export const approveRequest = async (req, res, next) => {
       session.endSession();
     }
   } catch (e) {
-    res.status(400).json({ success: false, message: e.message });
+    next(errorHandler(400, e.message));
   }
 };
 
@@ -783,6 +784,108 @@ export const cancelRequest = async (req, res, next) => {
     request.rejectionNote = "Cancelled by branch";
     await request.save();
     res.status(200).json({ success: true, message: "Request cancelled", request });
+  } catch (e) {
+    next(errorHandler(400, e.message));
+  }
+};
+
+export const confirmReceipt = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const request = await Request.findById(id);
+    if (!request) return next(errorHandler(404, "Request not found"));
+    if (request.status !== "Shipped") return next(errorHandler(400, "Only shipped requests can be confirmed"));
+
+    const qty = Math.abs(request.quantity);
+    const session = await mongoose.startSession();
+    try {
+      session.startTransaction();
+      const txnRequest = await Request.findById(id).session(session);
+      if (!txnRequest || txnRequest.status !== "Shipped") {
+        await session.abortTransaction();
+        return next(errorHandler(400, "Request is no longer in shipped state"));
+      }
+
+      // Move from reservedQty (in-transit) to onHandQty (available)
+      await StockBalance.updateOne(
+        { medicineId: txnRequest.medicine, locationId: txnRequest.branch },
+        { $inc: { reservedQty: -qty, onHandQty: qty }, $set: { lastTxnAt: new Date() } },
+        { upsert: true, session }
+      );
+
+      txnRequest.status = "Received";
+      txnRequest.receivedAt = new Date();
+      txnRequest.fulfilledAt = new Date();
+      if (req.user?.id) txnRequest.receivedByUserId = req.user.id;
+      await txnRequest.save({ session });
+
+      await session.commitTransaction();
+      res.status(200).json({ success: true, message: "Receipt confirmed", request: txnRequest });
+    } catch (txnErr) {
+      await session.abortTransaction();
+      throw txnErr;
+    } finally {
+      session.endSession();
+    }
+  } catch (e) {
+    next(errorHandler(400, e.message));
+  }
+};
+
+export const reverseShipment = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const request = await Request.findById(id);
+    if (!request) return next(errorHandler(404, "Request not found"));
+    if (request.status !== "Shipped") return next(errorHandler(400, "Only shipped requests can be reversed"));
+
+    const qty = Math.abs(request.quantity);
+    const centralStore = await Store.findOne();
+    if (!centralStore) return next(errorHandler(400, "No central store configured"));
+
+    const session = await mongoose.startSession();
+    try {
+      session.startTransaction();
+      const txnRequest = await Request.findById(id).session(session);
+      if (!txnRequest || txnRequest.status !== "Shipped") {
+        await session.abortTransaction();
+        return next(errorHandler(400, "Request is no longer in shipped state"));
+      }
+
+      // Reverse ledger entries (mark as REVERSED)
+      await StockLedger.updateMany(
+        { correlationId: `REQ-${id}`, status: "ACTIVE" },
+        { $set: { status: "REVERSED" } },
+        { session }
+      );
+
+      // Restore central store stock
+      await StockBalance.updateOne(
+        { medicineId: txnRequest.medicine, locationId: centralStore._id },
+        { $inc: { onHandQty: qty }, $set: { lastTxnAt: new Date() } },
+        { upsert: true, session }
+      );
+
+      // Clear branch reserved stock
+      await StockBalance.updateOne(
+        { medicineId: txnRequest.medicine, locationId: txnRequest.branch },
+        { $inc: { reservedQty: -qty }, $set: { lastTxnAt: new Date() } },
+        { upsert: true, session }
+      );
+
+      txnRequest.status = "Reversed";
+      txnRequest.reversedAt = new Date();
+      txnRequest.reversalNote = req.body?.note || "Reversed by admin";
+      await txnRequest.save({ session });
+
+      await session.commitTransaction();
+      res.status(200).json({ success: true, message: "Shipment reversed", request: txnRequest });
+    } catch (txnErr) {
+      await session.abortTransaction();
+      throw txnErr;
+    } finally {
+      session.endSession();
+    }
   } catch (e) {
     next(errorHandler(400, e.message));
   }
