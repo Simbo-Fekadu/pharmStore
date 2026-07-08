@@ -3,6 +3,17 @@ import User from "../models/user.model.js";
 import errorHandler from "../utils/error.js";
 import jwt from "jsonwebtoken";
 import { Types } from "mongoose";
+
+const cookieOptions = (() => {
+  const isProd = process.env.NODE_ENV === "production";
+  return {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: isProd,
+    path: "/",
+    maxAge: 3 * 24 * 60 * 60 * 1000,
+  };
+})();
 export const signup = async (req, res, next) => {
   const { username, email, password, role } = req.body;
   const hashedPassword = bcryptjs.hashSync(password, 10);
@@ -68,24 +79,14 @@ export const signin = async (req, res, next) => {
       }
     );
     const { password: pass, ...rest } = validUser._doc;
-    const isProd = process.env.NODE_ENV === "production";
-    // Harden cookie: secure in prod, sameSite 'lax' for CSRF mitigation, httpOnly always
-    // Optionally allow overriding domain via COOKIE_DOMAIN env variable
-    const cookieOptions = {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: isProd, // only over HTTPS in production
-      path: "/",
-      // Max-Age aligned with JWT expiry (~3 days)
-      maxAge: 3 * 24 * 60 * 60 * 1000,
-    };
+    const opts = { ...cookieOptions };
     if (process.env.COOKIE_DOMAIN) {
-      cookieOptions.domain = process.env.COOKIE_DOMAIN;
+      opts.domain = process.env.COOKIE_DOMAIN;
     }
     res
-      .cookie("access_token", token, cookieOptions)
+      .cookie("access_token", token, opts)
       .status(200)
-      .json({ success: true, token, user: rest });
+      .json({ success: true, user: rest });
   } catch (error) {
     next(error);
   }
@@ -95,6 +96,38 @@ export const signout = async (req, res, next) => {
   try {
     res.clearCookie("access_token");
     res.status(200).json({ success: true, message: "User has logged out!" });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const refresh = async (req, res, next) => {
+  try {
+    const token = req.cookies.access_token;
+    if (!token) return next(errorHandler(401, "No session"));
+    jwt.verify(token, process.env.SECRET, { ignoreExpiration: true }, (err, decoded) => {
+      if (err) return next(errorHandler(403, "Invalid session"));
+      const MAX_SESSION_SECONDS = 30 * 24 * 60 * 60;
+      const now = Math.floor(Date.now() / 1000);
+      if (now - (decoded.iat || 0) > MAX_SESSION_SECONDS) {
+        return next(errorHandler(403, "Session expired, please sign in again"));
+      }
+      const newToken = jwt.sign(
+        {
+          id: decoded.id,
+          role: decoded.role,
+          branch: decoded.branch,
+          pharmacy: decoded.pharmacy,
+        },
+        process.env.SECRET,
+        { expiresIn: "3d" }
+      );
+      const opts = { ...cookieOptions };
+      if (process.env.COOKIE_DOMAIN) {
+        opts.domain = process.env.COOKIE_DOMAIN;
+      }
+      res.cookie("access_token", newToken, opts).status(200).json({ success: true });
+    });
   } catch (error) {
     next(error);
   }
