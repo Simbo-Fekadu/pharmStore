@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
 import { Search, Plus, DollarSign, Users, Receipt } from "lucide-react";
-import { getApiBase } from "../api/base";
+import { API_BASE } from "../api/base";
 import { authFetch } from "../api/authFetch";
 import { ceilOrDash, ceilCurrency } from "../utils/number";
 
-const API = getApiBase() + "/backend";
+const API = API_BASE;
 
 const EmployeeSales = () => {
   const [medicines, setMedicines] = useState([]);
