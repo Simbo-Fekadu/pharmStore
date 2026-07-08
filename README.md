@@ -1,230 +1,389 @@
 # PharmStore
 
-<img width="1893" height="863" alt="image" src="https://github.com/user-attachments/assets/1ab879b3-b6b4-4427-9f15-f5c73615f4cf" />
-
-<img width="1887" height="866" alt="image" src="https://github.com/user-attachments/assets/504be9aa-559c-4a85-a47e-e905c861a0be" />
-
-A full‑stack pharmacy inventory and branch management system built with a **React (Vite) frontend** and a **Node.js / Express / MongoDB** backend. It supports centralized medicine inventory, branch request workflows, supplier & branch administration, and rich dashboard insights.
+A full‑stack pharmacy inventory and branch management system built with **React 19 (Vite)** and **Node.js / Express / MongoDB**. Supports centralized medicine inventory, branch request workflows, supplier & branch administration, multi‑pharmacy tenant management, and rich dashboard insights.
 
 ---
 
-## ✨ Key Features
-
-### Inventory & Medicines
-
-- CRUD for medicines with fields: name, brand, category, unit, batch, expiry, pricing, quantity, supplier linkage.
-- Soft delete (trash) workflow with separate trash view for recovery/purge (hard delete not shown in UI yet).
-- Automatic exclusion of expired items from active listings; near‑expiry highlighting logic prepared.
-- Category aggregation and distribution views (horizontal bars & donut) sorted alphabetically.
-
-### Branch Requests & Chat
-
-- Branch (or future employee) can create inventory transfer / restock requests.
-- Admin can view request details and send chat-like messages (messages array stored on request model).
-- Approval / rejection actions integrated with request lifecycle (backend endpoints implemented).
-
-### Suppliers & Branches
-
-- CRUD screens for suppliers (name, contact, address) and branches.
-- Supplier autocomplete in medicine form; unknown typed supplier name can be created implicitly on save (if logic enabled in controller).
-
-### Users
-
-- Basic user management scaffold (listing; auth token placeholder check on layout mount). Authentication layer is minimal and should be hardened before production.
-
-### Dashboard & Analytics
-
-- Metric cards: Active medicines, Near Expiry (90d), Expired count, Trash count with radial percentage rings.
-- Category Distribution (A–Z) bar chart (quantity sum) with percentage share labels.
-- Category Donut chart (ring) showing proportional category composition.
-- (Previously) Expiry bucket interactive bar chart – removed per recent change but code history retained in git prior to removal if needed.
-
-### Responsive Admin UI
-
-- Mobile‑optimized sidebar converts to a slide‑in drawer with toggle.
-- Dashboard charts adapt: stacked vertically on mobile, side‑by‑side on desktop.
-- Light & dark theme with CSS custom properties; overrides ensure contrast in light mode.
-
-### Theming & Styling
-
-- Tailwind CSS (v4) with custom CSS variables for palette (`--brand`, `--accent`, neutrals, semantic text colors).
-- Glass / frosted panels with backdrop blur and subtle gradients.
-- Utility overrides to map legacy `text-white/x` opacities to semantic colors in light mode for accessibility.
-
-### Accessibility & UX Enhancements
-
-- Interactive elements include `aria-label` and keyboard focus states (e.g., previous expiry buckets chart, menu toggles).
-- Truncated text tooltips via native `title` attribute for long category names.
-
----
-
-## 🗂 Project Structure
+## Architecture
 
 ```
 pharmStore/
-  backend/
-    index.js                # Express app bootstrap
-    controllers/            # Route handlers (auth, inventory, suppliers, etc.)
-    models/                 # Mongoose schemas (medicine, inventory, supplier, user, branch, store)
-    routes/                 # Express routers
-    utils/                  # Error handling & auth helpers
-  frontend/
-    src/
-      components/           # React components (Admin*, layout, charts)
-      main.jsx              # App root (React Router mounting)
-      App.jsx
-      index.css             # Tailwind & theme variables
-    vite.config.js
+├── backend/                        # Express API server
+│   ├── index.js                    # App bootstrap, middleware, route mounting
+│   ├── db.js                       # MongoDB connection manager
+│   ├── controllers/                # Route handlers (auth, inventory, medicine, …)
+│   ├── services/                   # Business logic layer (stock.service, transfer.service, sale.service)
+│   ├── models/                     # Mongoose schemas (Medicine, StockBalance, StockLedger, Request, …)
+│   ├── routes/                     # Express routers
+│   ├── middleware/                  # Authz, pharmacy scope
+│   ├── utils/                      # Error handler, JWT verify
+│   └── bootstrap/                  # Super admin + pharmacy seeding
+├── frontend/                       # React SPA
+│   ├── src/
+│   │   ├── App.jsx                 # Route definitions
+│   │   ├── main.jsx                # React root mount
+│   │   ├── components/             # 42 single‑purpose components
+│   │   ├── api/                    # base.js (API_BASE), authFetch.js (auth'd fetch)
+│   │   ├── contexts/               # Toast + Confirm providers
+│   │   ├── hooks/                  # useToast, useConfirm, usePharmacy
+│   │   ├── utils/                  # number.js, medicine.js (shared helpers)
+│   │   └── offline/                # IndexedDB cache + mutation queue
+│   └── vite.config.js
+├── docker-compose.yml
+├── render.yaml
+└── package.json                    # Root orchestration scripts
+```
+
+### Backend Layers
+
+| Layer | Responsibility |
+|---|---|
+| **Routes** | Define endpoints, mount middleware (auth, scope) |
+| **Controllers** | Parse request, delegate to services, shape response |
+| **Services** | Business logic — ledger posting, transfers, sales creation, stock validation |
+| **Models** | Mongoose schemas with indexes, virtuals, statics |
+| **Middleware** | JWT verification, role checks, pharmacy context scoping |
+
+### Frontend Component Hierarchy
+
+```
+<ThemeProvider>
+  <ErrorBoundary>
+    <ToastProvider>
+      <ConfirmProvider>
+        <Router>
+          <Routes>
+            /                         → Landing
+            /signin                   → SignIn
+            /admin                    → AdminLayout
+              index                   → Dashboard        ← merged (admin + employee)
+              medicines               → AdminMedicines
+              medicines/add           → MedicineAdd      ← merged
+              medicines/near-expiry   → MedicineExpiry   ← merged
+              medicines/expired       → MedicineExpiry   ← merged
+              ...
+            /employee                 → EmployeeLayout
+              index                   → Dashboard        ← same component
+              medicines               → EmployeeMedicines
+              medicines/add           → MedicineAdd      ← same component
+              chat                    → Chat             ← merged (global + request)
+              ...
 ```
 
 ---
 
-## 🧩 Tech Stack
+## Tech Stack
 
-| Layer    | Technology                                             |
-| -------- | ------------------------------------------------------ |
-| Frontend | React 19, React Router 7, Tailwind CSS 4, Lucide Icons |
-| Backend  | Node.js, Express 5, MongoDB (Mongoose 8)               |
-| Auth     | JSON Web Tokens (basic implementation)                 |
-| Tooling  | Vite, ESLint                                           |
+| Layer | Technology |
+|---|---|
+| Frontend | React 19, React Router 7, Tailwind CSS 4, Lucide Icons, Vite 6 |
+| Backend | Node.js, Express 5, MongoDB 8 (Mongoose) |
+| Auth | JSON Web Tokens (JWT) with bcrypt password hashing |
+| Desktop | Electron (optional) with bundled backend |
+| Offline | IndexedDB cache + mutation queue with background sync |
+| Tooling | ESLint (flat config), Docker Compose |
 
 ---
 
-## ⚙️ Setup & Run
+## Features
+
+### Inventory & Medicines
+- Full CRUD for medicines: name, brand, category, unit, batch number, expiry date, pricing, quantity, supplier linkage
+- Stock balance tracking via `StockBalance` / `StockLedger` models with unit conversion
+- Soft delete (trash) with recovery and permanent purge
+- Auto-exclusion of expired items from active listings
+- Category aggregation with distribution charts (bar + donut)
+- Bulk CSV import and in-place editing (admin)
+- Near-expiry (90 days) and expired views
+
+### Branch Requests & Fulfillment
+- Branches create inventory requests from central stock
+- Admin approval / rejection with stock deduction on approval
+- Per-request chat (admin ↔ branch) for clarifications
+- Request lifecycle: Pending → Approved / Rejected
+
+### Stock Transfers
+- Distribute inventory from central store to branches
+- Auto-posting to StockLedger with balanced debit/credit entries
+- Complete audit trail per transfer
+
+### Sales
+- Point-of-sale interface (employee) with medicine search and quantity/price entry
+- Auto-stock deduction on sale completion
+- Sales history with date range, branch, and employee filters
+- Daily sales log
+
+### Multi-Pharmacy (Super Admin)
+- Tenant management: create pharmacies, assign branches
+- Super admin dashboard with aggregated metrics across all pharmacies
+- Pharmacy-level filtering on medicines, users, transactions, requests
+- Per-pharmacy users, branches, and inventory oversight
+
+### Chat
+- Global room chat (admin + employee)
+- Per-request chat (embedded in request workflow)
+- Messages persisted with sender handle and timestamps
+
+### Dashboard & Analytics
+- Metric cards: active medicines, near expiry, expired, trash counts
+- Sales summary with date range picker
+- Recent transactions table
+- Category distribution (bar + donut charts)
+- Price metrics (admin only): average prices, profit margin
+- Super admin overview: pharmacy counts, user totals, system-wide metrics
+
+### User Roles
+| Role | Scope |
+|---|---|
+| `super_admin` | All pharmacies, full system access |
+| `admin` | Single pharmacy, manage medicines/users/suppliers/branches/requests |
+| `employee` | Single branch, limited stock, sales, requests |
+| `inventory_manager` | Branch-level inventory operations |
+
+### Theming
+- Light / dark mode with CSS custom properties
+- Customizable brand and accent colors
+- Responsive: mobile sidebar → slide-in drawer
+- Persistent theme preference via localStorage
+
+---
+
+## Workflows
+
+### Medicine Lifecycle
+```
+Admin adds medicine ──→ Active Medicines list
+       │                      │
+       │                      ├── near expiry (90d) → MedicineExpiry view
+       │                      ├── expired → MedicineExpiry view
+       │                      └── soft delete → Trash (recover or purge)
+       │
+       └── Bulk CSV import (admin)
+```
+
+### Branch Request Workflow
+```
+Employee creates request ──→ AdminRequestCenter
+       │                           │
+       │                    ┌──────┴──────┐
+       │                    │             │
+       │                Approve       Reject
+       │                    │             │
+       │         Stock deducted      Status set
+       │         Items dispatched     to rejected
+       │
+       └── Chat with admin for clarifications
+```
+
+### Stock Transfer Workflow
+```
+Central Store ──Transfer──→ Branch
+       │                        │
+   StockLedger              StockLedger
+   (debit)                  (credit)
+```
+
+### Sale Workflow
+```
+Employee searches medicine
+       │
+   Sets quantity + price
+       │
+   Sale created ──→ StockLedger (debit)
+       │              StockBalance (decrement)
+   Daily log updated
+```
+
+---
+
+## Project Structure (Detailed)
+
+### Backend
+
+```
+backend/
+├── index.js                     # Express setup, CORS, helmet, error handler, migration scripts
+├── db.js                        # connectDB() — single persistent MongoDB connection
+├── controllers/
+│   ├── auth.controller.js       # signup, signin, signout, me
+│   ├── inventory.controller.js  # CRUD, stock balance, ledger, transfers, requests
+│   ├── medicine.controller.js   # Medicine CRUD, trash, restore, bulk import
+│   ├── sale.controller.js       # Create sale, list sales, daily summary
+│   ├── location.controller.js   # Branch & Store CRUD
+│   ├── supplier.controller.js   # Supplier CRUD
+│   ├── user.controller.js       # User CRUD, employee creation
+│   ├── chat.controller.js       # Chat message list + post
+│   ├── superadmin.controller.js # Multi-pharmacy overview, detail, management
+│   └── export.controller.js     # CSV/Excel export endpoints
+├── services/
+│   ├── stock.service.js         # postLedgerEntry, getStockBalance, validateStock
+│   ├── transfer.service.js      # transferStock (cross-location)
+│   └── sale.service.js          # createSale with unit conversion + ledger posting
+├── models/
+│   ├── medicine.model.js
+│   ├── inventory.model.js       # StockBalance + StockLedger schemas
+│   ├── request.model.js
+│   ├── sale.model.js
+│   ├── user.model.js
+│   ├── supplier.model.js
+│   ├── branch.model.js
+│   ├── store.model.js
+│   ├── pharmacy.model.js
+│   └── chat.model.js
+├── routes/
+│   ├── auth.route.js, medicine.route.js, inventory.route.js, …
+│   └── sync.route.js            # Atlas sync endpoints (super admin only)
+├── middleware/
+│   ├── authz.js                 # requireSuperAdmin
+│   └── pharmacyScope.js         # attachPharmacyContext
+├── utils/
+│   ├── error.js                 # errorHandler(statusCode, message)
+│   └── verifyUser.js            # JWT verify middleware
+└── bootstrap/
+    ├── superadmin.js            # Auto-create super admin on startup
+    └── pharmacy.js              # Default pharmacy + legacy backfill
+```
+
+### Frontend
+
+```
+frontend/src/
+├── App.jsx                      # All routes → single Router
+├── main.jsx                     # ReactDOM.createRoot
+├── index.css                    # Tailwind + CSS variables (light/dark)
+├── api/
+│   ├── base.js                  # getApiBase(), API_BASE, isElectron()
+│   └── authFetch.js             # Authenticated fetch wrapper
+├── components/
+│   ├── Dashboard.jsx            # Admin + employee dashboard (role-prop)
+│   ├── AdminMedicines.jsx       # Medicine CRUD table with search/filter/export
+│   ├── EmployeeMedicines.jsx    # Employee medicine list with request-stock modal
+│   ├── MedicineAdd.jsx          # Add medicine form (admin=full, employee=simplified)
+│   ├── MedicineExpiry.jsx       # Near-expiry & expired view (type prop)
+│   ├── AdminInventory.jsx       # Store inventory with receive + distribute modals
+│   ├── AdminRequestCenter.jsx   # Incoming requests with approve/reject
+│   ├── BranchRequest.jsx        # Employee request creation
+│   ├── Fulfillment.jsx          # Request status tracking (employee)
+│   ├── Chat.jsx                 # Global + per-request chat (requestId prop)
+│   ├── AdminUsers.jsx           # User management
+│   ├── AdminSuppliers.jsx       # Supplier management
+│   ├── AdminBranches.jsx        # Branch management
+│   ├── AdminSales.jsx           # Sales reports
+│   ├── EmployeeSales.jsx        # Point-of-sale interface
+│   ├── EmployeeSalesHistory.jsx # Branch sales history
+│   ├── EmployeeAddStock.jsx     # Self-service stock addition
+│   ├── AdminTransactions.jsx    # Ledger entry log
+│   ├── AdminMedicineTrash.jsx   # Soft-delete recovery + purge
+│   ├── AdminActiveMedicines.jsx # Active (non-expired) medicines list
+│   ├── BranchMedicines.jsx      # Branch read-only medicine view
+│   ├── SuperAdminDashboard.jsx  # Multi-tenant metrics
+│   ├── SuperAdminPharmacies.jsx # Pharmacy CRUD
+│   ├── SuperAdminBranches.jsx   # All branches across pharmacies
+│   ├── SuperAdminPharmacyDetail.jsx # Full pharmacy detail (8 tabs)
+│   ├── SuperAdminBranchDetail.jsx   # Branch detail
+│   ├── ExportCenter.jsx         # Data export (xlsx/pdf)
+│   ├── AdminLayout.jsx          # Admin sidebar layout
+│   ├── EmployeeLayout.jsx       # Employee sidebar layout
+│   ├── Landing.jsx              # Marketing landing page
+│   ├── SignIn.jsx / SignUp.jsx  # Auth forms
+│   ├── Home.jsx                 # Legacy simple dashboard
+│   ├── InventoryForm.jsx        # Standalone inventory upsert form
+│   ├── InventoryPage.jsx        # Inventory form + stats page
+│   ├── ThemeProvider.jsx        # Light/dark theme context
+│   ├── ToastProvider.jsx        # Toast notification system
+│   ├── ConfirmProvider.jsx      # Confirmation modal
+│   └── ErrorBoundary.jsx        # React error boundary
+├── hooks/
+│   ├── useToast.js              # Toast context consumer
+│   ├── useConfirm.js            # Confirm context consumer
+│   └── usePharmacy.js           # Pharmacy loader for super admin
+├── utils/
+│   ├── number.js                # ceilNumber, ceilCurrency, ceilOrDash
+│   └── medicine.js              # sortByRecent, formatBirr, sellingValue, displayQuantity
+├── contexts/
+│   ├── ToastContext.js
+│   └── ConfirmContext.js
+└── offline/
+    ├── db.js                    # IndexedDB open/withStore
+    ├── cache.js                 # Read-model caching
+    ├── queue.js                 # Mutation queue
+    └── sync.js                  # Online/focus sync trigger
+```
+
+---
+
+## Setup
 
 ### Prerequisites
-
 - Node.js 18+
-- MongoDB running locally or a connection URI
+- MongoDB running locally or a remote URI
 
 ### 1. Clone & Install
-
 ```bash
 git clone <repo-url>
 cd pharmStore
+npm install                    # Root (orchestration scripts, if any)
 cd backend && npm install
 cd ../frontend && npm install
 ```
 
-### 2. Environment Variables (Backend)
-
-Create `backend/.env` (or copy `backend/.env.example`):
-
+### 2. Configure Backend
+Create `backend/.env`:
 ```
 PORT=3000
-# Either MONGO_URL or MONGO_URI is supported. If neither is set the server will
-# default to a local MongoDB: mongodb://localhost:27017/pharmstore (developer convenience).
 MONGO_URI=mongodb://localhost:27017/pharmstore
-SECRET=replace_this_secret
+SECRET=a_strong_random_secret
+SUPERADMIN_EMAIL=admin@pharmstore.com
+SUPERADMIN_PASSWORD=your_password
 ```
 
 ### 3. Start Development
-
-In two terminals:
-
 ```bash
-# Terminal 1
-cd backend
-npm start
+# Terminal 1 — Backend API
+cd backend && npm start
 
-# Terminal 2
-cd frontend
-npm run dev
+# Terminal 2 — Frontend dev server
+cd frontend && npm run dev
 ```
 
-Open http://localhost:5173 (default Vite port).
+Open http://localhost:5173.
 
 ---
 
-## 🔐 Authentication Notes
+## API Overview
 
-Current auth check is minimal (token presence in `localStorage`). For production:
+All endpoints are prefixed with `/backend/`.
 
-- Add password hashing (bcrypt already present) during user creation.
-- Implement refresh tokens / expiration handling.
-- Enforce role-based access (admin vs branch users).
+| Endpoint Group | Auth | Description |
+|---|---|---|
+| `POST /auth/signup` | Public | Register new user |
+| `POST /auth/signin` | Public | Login → JWT token |
+| `POST /auth/signout` | Auth | Clear session |
+| `GET /auth/me` | Auth | Current user info |
+| `GET/POST /medicine` | Auth | List / create medicines |
+| `GET/POST /inventory/*` | Auth | Stock balance, ledger, transfers, requests |
+| `GET/POST /sales/*` | Auth | Sales CRUD + history |
+| `GET/POST /location/*` | Auth | Branch / Store CRUD |
+| `GET/POST /supplier` | Auth | Supplier CRUD |
+| `GET/POST /user` | Auth | User management |
+| `GET/POST /chat` | Auth | Chat messages |
+| `GET/POST /superadmin/*` | Super Admin | Multi-pharmacy management |
+| `POST /atlas/run` | Super Admin | Trigger Atlas sync |
 
 ---
 
-## 🗄 Data Models (Highlights)
+## Deployment
 
-### Medicine
-
+### Docker
+```bash
+docker-compose up -d
 ```
-medicineName, brand, category, unit,
-expiryDate, batchNumber, quantity,
-purchasePrice, sellingPrice, supplier, isDeleted
-```
 
-### Request (extended)
+### Render (render.yaml)
+Push to a Render-connected GitHub repo; `render.yaml` auto-configures the web service.
 
-```
-items[], status, messages[{ sender, text, createdAt }]
-```
-
-### Supplier / Branch / User
-
-Standard identification + contact fields; can be extended (e.g., geolocation, performance metrics).
-
----
-
-## 🚀 Roadmap Ideas
-
-| Area                 | Enhancement                                                                      |
-| -------------------- | -------------------------------------------------------------------------------- |
-| Analytics            | Re-introduce expiry bucket chart or trend lines once sales data exists           |
-| Sales                | Add `sales` collection (date, items[], total, branch) + dashboard revenue trends |
-| Prescriptions        | Add prescription model linking patient -> medicines dispensed                    |
-| Supplier Performance | Delivery logs with lead time analytics                                           |
-| Notifications        | Email / in-app alerts for near-expiry thresholds                                 |
-| Access Control       | Role-based permissions & audit logging                                           |
-| Testing              | Add Jest + React Testing Library & Supertest for API                             |
-
----
-
-## ♿ Accessibility & Performance Considerations
-
-- Replace remaining hard-coded white text classes with semantic helpers.
-- Consider lazy loading large tables (virtualization) if dataset grows.
-- Add ARIA roles for tables & status regions.
-
----
-
-## 🧪 Testing (Planned)
-
-Testing scaffold not yet added. Recommended:
-
-- Unit: model validation & utility functions.
-- API: inventory CRUD, request workflow, auth flows.
-- UI: form submission, request messaging interactions.
-
----
-
-## 📦 Deployment Notes
-
-- Serve frontend as static build behind reverse proxy (Nginx / Caddy).
-- Configure process manager for backend (PM2, systemd) & environment secrets.
-- Enable CORS restrictions to allowed origins only.
-- Add rate limiting & helmet middleware for security.
-
----
-
-## 📄 License
-
-Project currently unlicensed (ISC placeholder in backend). Choose a license (MIT / Apache-2.0) before external distribution.
-
----
-
-## 🙌 Contributions / Customization
-
-This codebase is modular: add new charts or modules by creating a component in `frontend/src/components` and wiring data from existing endpoints or new Express routes. PRs or suggestions to improve stability, performance, or security are welcome.
-
----
-
-## 🧭 Summary
-
-PharmStore delivers a foundation for pharmacy inventory + branch coordination, combining clear category analytics, responsive theming, and extensible backend models—ready to evolve into a full operational platform with sales, prescription tracking, and advanced analytics.
-
----
-
-> Replace `<repo-url>` above with your repository URL after publishing.
+### Manual
+- Build frontend: `cd frontend && npm run build`
+- Serve `frontend/dist/` from Express or a reverse proxy (Nginx / Caddy)
+- Run backend with a process manager (PM2, systemd)
+- Set environment secrets and restrict CORS origins in production
