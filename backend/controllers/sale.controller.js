@@ -4,6 +4,7 @@ import Branch from "../models/branch.model.js";
 import Medicine from "../models/medicine.model.js";
 import User from "../models/user.model.js";
 import { StockLedger, StockBalance } from "../models/inventory.model.js";
+import { safeDecrement } from "../services/stock.service.js";
 import errorHandler from "../utils/error.js";
 
 // Helper: parse YYYY-MM-DD as local start/end of day
@@ -59,20 +60,10 @@ export const createSale = async (req, res, next) => {
         await session.abortTransaction();
         return next(errorHandler(400, "Invalid quantity"));
       }
-      // Fetch balance and use medicine to compute base quantity if selling in pack
-      const bal = await StockBalance.findOne({
-        medicineId,
-        locationId: branchId,
-      }).session(session);
       const packSize = Number(medicine.packSize) || 0;
       const isPack =
         unit && unit.toLowerCase() === (medicine.packUnit || "").toLowerCase();
       const qtyInBase = isPack && packSize > 0 ? q * packSize : q;
-      const onHand = bal?.onHandQty || 0;
-      if (onHand < qtyInBase) {
-        await session.abortTransaction();
-        return next(errorHandler(400, "Insufficient branch stock"));
-      }
 
       // Create sale record
       const sale = new Sale({
@@ -90,7 +81,7 @@ export const createSale = async (req, res, next) => {
 
       await sale.save({ session });
 
-      // Record stock movement (SALE) and update branch balance
+      // Record stock movement (SALE) and update branch balance atomically
       const ledger = await StockLedger.create(
         [
           {
@@ -106,14 +97,13 @@ export const createSale = async (req, res, next) => {
         ],
         { session }
       );
-      await StockBalance.updateOne(
-        { medicineId, locationId: branchId },
-        {
-          $inc: { onHandQty: -Math.abs(Number(qtyInBase)) },
-          $set: { lastTxnAt: new Date(), lastTxnId: ledger[0]._id },
-        },
-        { upsert: true, session }
-      );
+      await safeDecrement({
+        medicineId,
+        locationId: branchId,
+        quantity: qtyInBase,
+        ledgerId: ledger[0]._id,
+        session,
+      });
 
       await session.commitTransaction();
 

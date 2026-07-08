@@ -5,7 +5,7 @@ import Medicine from "../models/medicine.model.js";
 import Branch from "../models/branch.model.js";
 import Store from "../models/store.model.js";
 import errorHandler from "../utils/error.js";
-import { postLedgerEntry } from "../services/stock.service.js";
+import { postLedgerEntry, safeDecrement } from "../services/stock.service.js";
 import { transferStock } from "../services/transfer.service.js";
 
 export const postLedger = async (req, res, next) => {
@@ -706,17 +706,6 @@ export const approveRequest = async (req, res, next) => {
         return next(errorHandler(400, "Request already processed"));
       }
 
-      const sourceBal = await StockBalance.findOne({
-        medicineId: txnRequest.medicine,
-        locationId: storeId,
-      }).session(session);
-      const available = sourceBal?.onHandQty || 0;
-
-      if (available < txnRequest.quantity) {
-        await session.abortTransaction();
-        return next(errorHandler(400, "Insufficient central stock"));
-      }
-
       const qty = Math.abs(txnRequest.quantity);
       const correlationId = `REQ-${id}`;
       const outLine = await StockLedger.create(
@@ -728,11 +717,14 @@ export const approveRequest = async (req, res, next) => {
         { session }
       );
 
-      await StockBalance.updateOne(
-        { medicineId: txnRequest.medicine, locationId: storeId },
-        { $inc: { onHandQty: -qty }, $set: { lastTxnAt: new Date(), lastTxnId: outLine[0]._id } },
-        { upsert: true, session }
-      );
+      // Atomically decrement central stock (sufficiency check + update in one op)
+      await safeDecrement({
+        medicineId: txnRequest.medicine,
+        locationId: storeId,
+        quantity: qty,
+        ledgerId: outLine[0]._id,
+        session,
+      });
       // Branch stock goes to reservedQty (in-transit) until receipt confirmed
       await StockBalance.updateOne(
         { medicineId: txnRequest.medicine, locationId: txnRequest.branch },
@@ -980,21 +972,18 @@ export const employeeAddBranchMedicine = async (req, res, next) => {
     try {
       session.startTransaction();
 
-      const centralBal = await StockBalance.findOne({ medicineId, locationId: central._id }).session(session);
-      if (!centralBal || centralBal.onHandQty < qty) {
-        await session.abortTransaction();
-        return next(errorHandler(400, "Insufficient central store stock"));
-      }
-
       const outLedger = await StockLedger.create(
         [{ medicineId, locationId: central._id, quantity: -qty, transactionType: "TRANSFER_OUT", createdByUserId: user.id, notes: reason || undefined }],
         { session }
       );
-      await StockBalance.updateOne(
-        { medicineId, locationId: central._id },
-        { $inc: { onHandQty: -qty }, $set: { lastTxnAt: new Date(), lastTxnId: outLedger[0]._id } },
-        { upsert: true, session }
-      );
+      // Atomically decrement central stock
+      await safeDecrement({
+        medicineId,
+        locationId: central._id,
+        quantity: qty,
+        ledgerId: outLedger[0]._id,
+        session,
+      });
 
       const inLedger = await StockLedger.create(
         [{ medicineId, locationId: user.branch, quantity: qty,
@@ -1092,19 +1081,6 @@ export const employeeAddBranchMedicinesBatch = async (req, res, next) => {
             continue;
           }
           const qty = Math.abs(Number(quantity));
-          const centralBal = await StockBalance.findOne({
-            medicineId,
-            locationId: central._id,
-          }).session(itemSession);
-          if (!centralBal || centralBal.onHandQty < qty) {
-            results.push({
-              medicineId,
-              success: false,
-              error: "Insufficient central stock",
-            });
-            await itemSession.abortTransaction();
-            continue;
-          }
           const outLedger = await StockLedger.create(
             [
               {
@@ -1118,14 +1094,23 @@ export const employeeAddBranchMedicinesBatch = async (req, res, next) => {
             ],
             { session: itemSession }
           );
-          await StockBalance.updateOne(
-            { medicineId, locationId: central._id },
-            {
-              $inc: { onHandQty: -qty },
-              $set: { lastTxnAt: new Date(), lastTxnId: outLedger[0]._id },
-            },
-            { upsert: true, session: itemSession }
-          );
+          try {
+            await safeDecrement({
+              medicineId,
+              locationId: central._id,
+              quantity: qty,
+              ledgerId: outLedger[0]._id,
+              session: itemSession,
+            });
+          } catch (decrErr) {
+            await itemSession.abortTransaction();
+            results.push({
+              medicineId,
+              success: false,
+              error: "Insufficient central stock",
+            });
+            continue;
+          }
           const inLedger = await StockLedger.create(
             [
               {
