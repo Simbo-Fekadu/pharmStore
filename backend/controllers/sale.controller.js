@@ -4,6 +4,7 @@ import Branch from "../models/branch.model.js";
 import Medicine from "../models/medicine.model.js";
 import User from "../models/user.model.js";
 import { StockLedger, StockBalance } from "../models/inventory.model.js";
+import { safeDecrement } from "../services/stock.service.js";
 import errorHandler from "../utils/error.js";
 
 // Helper: parse YYYY-MM-DD as local start/end of day
@@ -59,20 +60,10 @@ export const createSale = async (req, res, next) => {
         await session.abortTransaction();
         return next(errorHandler(400, "Invalid quantity"));
       }
-      // Fetch balance and use medicine to compute base quantity if selling in pack
-      const bal = await StockBalance.findOne({
-        medicineId,
-        locationId: branchId,
-      }).session(session);
       const packSize = Number(medicine.packSize) || 0;
       const isPack =
         unit && unit.toLowerCase() === (medicine.packUnit || "").toLowerCase();
       const qtyInBase = isPack && packSize > 0 ? q * packSize : q;
-      const onHand = bal?.onHandQty || 0;
-      if (onHand < qtyInBase) {
-        await session.abortTransaction();
-        return next(errorHandler(400, "Insufficient branch stock"));
-      }
 
       // Create sale record
       const sale = new Sale({
@@ -90,7 +81,7 @@ export const createSale = async (req, res, next) => {
 
       await sale.save({ session });
 
-      // Record stock movement (SALE) and update branch balance
+      // Record stock movement (SALE) and update branch balance atomically
       const ledger = await StockLedger.create(
         [
           {
@@ -106,14 +97,13 @@ export const createSale = async (req, res, next) => {
         ],
         { session }
       );
-      await StockBalance.updateOne(
-        { medicineId, locationId: branchId },
-        {
-          $inc: { onHandQty: -Math.abs(Number(qtyInBase)) },
-          $set: { lastTxnAt: new Date(), lastTxnId: ledger[0]._id },
-        },
-        { upsert: true, session }
-      );
+      await safeDecrement({
+        medicineId,
+        locationId: branchId,
+        quantity: qtyInBase,
+        ledgerId: ledger[0]._id,
+        session,
+      });
 
       await session.commitTransaction();
 
@@ -478,7 +468,80 @@ export const getAdminSalesSummary = async (req, res, next) => {
   }
 };
 
-// ADMIN: Today's total sales across all branches
+// ADMIN: Refund a sale — reverse stock and mark sale as refunded
+export const refundSale = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { note } = req.body;
+    const sale = await Sale.findById(id);
+    if (!sale) return next(errorHandler(404, "Sale not found"));
+    if (sale.refundedAt) return next(errorHandler(400, "Sale already refunded"));
+
+    // Find original ledger entry
+    const ledgerEntry = await StockLedger.findOne({
+      sourceDocType: "SALE",
+      sourceDocId: sale._id.toString(),
+      status: "ACTIVE",
+    });
+    if (!ledgerEntry) return next(errorHandler(404, "No active ledger entry found for this sale"));
+
+    const qtyInBase = Math.abs(ledgerEntry.quantity);
+
+    const session = await mongoose.startSession();
+    try {
+      session.startTransaction();
+
+      // Mark original ledger as REVERSED
+      await StockLedger.updateOne(
+        { _id: ledgerEntry._id },
+        { $set: { status: "REVERSED" } },
+        { session }
+      );
+
+      // Create return ledger entry (positive = stock back in)
+      await StockLedger.create(
+        [{
+          medicineId: sale.medicineId,
+          locationId: sale.branchId,
+          quantity: qtyInBase,
+          transactionType: "RETURN_CUSTOMER",
+          sourceDocType: "SALE_REFUND",
+          sourceDocId: sale._id.toString(),
+          unitPrice: sale.price,
+          createdByUserId: req.user?.id,
+          notes: note ? `Refund: ${note}` : undefined,
+        }],
+        { session }
+      );
+
+      // Restore stock balance
+      await StockBalance.updateOne(
+        { medicineId: sale.medicineId, locationId: sale.branchId },
+        {
+          $inc: { onHandQty: qtyInBase },
+          $set: { lastTxnAt: new Date() },
+        },
+        { upsert: true, session }
+      );
+
+      // Mark sale as refunded
+      sale.refundedAt = new Date();
+      sale.refundNote = note || "";
+      if (req.user?.id) sale.refundedByUserId = req.user.id;
+      await sale.save({ session });
+
+      await session.commitTransaction();
+      res.status(200).json({ success: true, message: "Sale refunded", sale });
+    } catch (txnErr) {
+      await session.abortTransaction();
+      throw txnErr;
+    } finally {
+      session.endSession();
+    }
+  } catch (e) {
+    next(e);
+  }
+};
 export const getAdminTodayTotal = async (req, res, next) => {
   try {
     const now = new Date();

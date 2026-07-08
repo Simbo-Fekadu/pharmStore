@@ -68,11 +68,9 @@ const AdminLayout = () => {
     };
   }, []);
   useEffect(() => {
-    // simple auth check placeholder
-    const token = localStorage.getItem("token");
-    if (!token) navigate("/signin");
     const role = localStorage.getItem("role");
-    if (role && !["admin", "super_admin"].includes(role)) {
+    if (!role) navigate("/signin");
+    else if (!["admin", "super_admin"].includes(role)) {
       navigate("/employee");
     }
   }, [navigate]);
@@ -274,6 +272,8 @@ const AdminLayout = () => {
           <button
             onClick={() => {
               localStorage.removeItem("token");
+              localStorage.removeItem("role");
+              localStorage.removeItem("user");
               navigate("/signin");
             }}
             aria-label="Logout"

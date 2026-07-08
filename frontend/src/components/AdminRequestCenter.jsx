@@ -14,6 +14,7 @@ const AdminRequestCenter = () => {
   const [tab, setTab] = useState("Pending");
   const [centralStock, setCentralStock] = useState(null);
   const [approveError, setApproveError] = useState("");
+  const [userRole, setUserRole] = useState(null);
 
   const loadRequests = useCallback(async () => {
     try {
@@ -57,6 +58,8 @@ const AdminRequestCenter = () => {
 
   useEffect(() => {
     loadRequests();
+    const role = localStorage.getItem("role");
+    setUserRole(role);
   }, [loadRequests]);
   useEffect(() => {
     if (activeId) loadOne(activeId);
@@ -107,6 +110,19 @@ const AdminRequestCenter = () => {
     loadOne(activeId);
   };
 
+  const reverseShipment = async () => {
+    if (!activeId) return;
+    const reason = window.prompt("Reason for reversing this shipment:");
+    if (!reason) return;
+    await authFetch(`${API}/inventory/request/${activeId}/reverse`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ note: reason }),
+    });
+    await loadRequests();
+    loadOne(activeId);
+  };
+
   const filtered = requests.filter((r) =>
     tab === "All" ? true : r.status === tab
   );
@@ -115,7 +131,7 @@ const AdminRequestCenter = () => {
     <div className="flex flex-col lg:flex-row gap-6 h-full">
       <div className="lg:w-1/2 space-y-4">
         <div className="flex items-center gap-2 flex-wrap">
-          {["Pending", "Fulfilled", "Rejected", "All"].map((t) => (
+          {["Pending", "Shipped", "Received", "Rejected", "Reversed", "All"].map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -158,9 +174,15 @@ const AdminRequestCenter = () => {
                   className={`text-[10px] px-2 py-0.5 rounded uppercase tracking-wide font-semibold ${
                     r.status === "Pending"
                       ? "bg-amber-500/20 text-amber-300"
-                      : r.status === "Fulfilled"
+                      : r.status === "Shipped"
+                      ? "bg-indigo-500/20 text-indigo-300"
+                      : r.status === "Received"
                       ? "bg-emerald-500/20 text-emerald-300"
-                      : "bg-rose-500/20 text-rose-300"
+                      : r.status === "Rejected"
+                      ? "bg-rose-500/20 text-rose-300"
+                      : r.status === "Reversed"
+                      ? "bg-gray-500/20 text-gray-300"
+                      : "bg-gray-500/20 text-gray-300"
                   }`}
                 >
                   {r.status}
@@ -215,6 +237,16 @@ const AdminRequestCenter = () => {
                     </button>
                   </>
                 )}
+                {activeRequest.status === "Shipped" &&
+                  userRole &&
+                  ["admin", "inventory_manager"].includes(userRole) && (
+                    <button
+                      onClick={reverseShipment}
+                      className="px-3 py-1.5 text-xs rounded bg-gray-500/20 hover:bg-gray-500/30 text-gray-200 font-semibold"
+                    >
+                      Reverse Shipment
+                    </button>
+                  )}
               </div>
             </div>
             <div className="flex flex-col gap-6 flex-1 overflow-auto p-4">

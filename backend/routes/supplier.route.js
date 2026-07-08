@@ -1,5 +1,5 @@
 import express from "express";
-import { verifyToken } from "../utils/verifyUser.js";
+import { verifyToken, requireAdmin } from "../utils/verifyUser.js";
 import { attachPharmacyContext } from "../middleware/pharmacyScope.js";
 import {
   createSupplier,
@@ -14,10 +14,10 @@ const router = express.Router();
 // Protect and attach pharmacy scope
 router.use(verifyToken, attachPharmacyContext);
 
-router.post("/", createSupplier);
+router.post("/", requireAdmin, createSupplier);
 router.get("/", getSuppliers);
 router.get("/:id", getSupplier);
-router.put("/:id", updateSupplier);
-router.delete("/:id", deleteSupplier);
+router.put("/:id", requireAdmin, updateSupplier);
+router.delete("/:id", requireAdmin, deleteSupplier);
 
 export default router;

@@ -73,13 +73,17 @@ const Fulfillment = () => {
                   <td className="py-1.5 px-3">
                     <span
                       className={`px-2 py-0.5 rounded-full text-[10px] font-semibold tracking-wide uppercase ${
-                        r.status === "Approved"
-                          ? "bg-green-600/80 text-white"
+                        r.status === "Pending"
+                          ? "bg-amber-500/80 text-gray-900"
+                          : r.status === "Shipped"
+                          ? "bg-indigo-500/80 text-white"
+                          : r.status === "Received"
+                          ? "bg-emerald-500/80 text-white"
                           : r.status === "Rejected"
-                          ? "bg-red-600/80 text-white"
-                          : r.status === "Fulfilled"
-                          ? "bg-green-600/90 text-white"
-                          : "bg-yellow-500/80 text-gray-900"
+                          ? "bg-rose-500/80 text-white"
+                          : r.status === "Reversed"
+                          ? "bg-gray-500/80 text-white"
+                          : "bg-gray-500/80 text-white"
                       }`}
                     >
                       {r.status}

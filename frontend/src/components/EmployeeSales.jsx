@@ -44,19 +44,13 @@ const EmployeeSales = () => {
                 : u.branches[0];
           }
         }
-        // Fallback: decode JWT stored token to get branch claim if present
+        // Fallback: get branch from cached user object
         if (!branchId) {
-          const tok = localStorage.getItem("token");
-          if (tok) {
-            const parts = tok.split(".");
-            if (parts.length === 3) {
-              try {
-                const payload = JSON.parse(atob(parts[1]));
-                if (payload?.branch) branchId = payload.branch;
-              } catch {
-                /* ignore */
-              }
-            }
+          try {
+            const cachedUser = JSON.parse(localStorage.getItem("user") || "{}");
+            branchId = cachedUser?.branch?._id || cachedUser?.branch;
+          } catch {
+            /* ignore */
           }
         }
       } catch {

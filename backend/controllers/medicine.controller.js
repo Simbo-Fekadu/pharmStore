@@ -573,6 +573,46 @@ export const getActiveMedicines = async (req, res) => {
   }
 };
 
+// Near-expiry medicines (expiring within N days, default 90)
+export const getNearExpiryMedicines = async (req, res) => {
+  try {
+    const days = Math.max(1, Number(req.query.days) || 90);
+    const now = new Date();
+    const cutoff = new Date(Date.now() + days * 86400000);
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
+    const skip = (page - 1) * limit;
+    const q = { isDeleted: false, expiryDate: { $gte: now, $lte: cutoff } };
+    if (req.pharmacyId) q.pharmacy = req.pharmacyId;
+    const [medicines, totalCount] = await Promise.all([
+      Medicine.find(q).populate("supplier").skip(skip).limit(limit),
+      Medicine.countDocuments(q),
+    ]);
+    res.json({ success: true, page, limit, totalCount, medicines });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+// Expired medicines
+export const getExpiredMedicines = async (req, res) => {
+  try {
+    const now = new Date();
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
+    const skip = (page - 1) * limit;
+    const q = { expiryDate: { $lt: now } };
+    if (req.pharmacyId) q.pharmacy = req.pharmacyId;
+    const [medicines, totalCount] = await Promise.all([
+      Medicine.find(q).populate("supplier").skip(skip).limit(limit),
+      Medicine.countDocuments(q),
+    ]);
+    res.json({ success: true, page, limit, totalCount, medicines });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
 // Helper to normalize category values from import files
 const normalizeCategory = (raw) => {
   if (!raw) return "MISCELLANEOUS";

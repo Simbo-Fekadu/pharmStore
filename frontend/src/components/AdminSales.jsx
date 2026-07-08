@@ -234,15 +234,16 @@ const AdminSales = () => {
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-foreground">
               <thead className="bg-muted">
-                <tr>
-                  <th className="text-left px-3 py-2">Date</th>
-                  <th className="text-left px-3 py-2">Branch</th>
-                  <th className="text-left px-3 py-2">Employee</th>
-                  <th className="text-left px-3 py-2">Medicine</th>
-                  <th className="text-left px-3 py-2">Qty</th>
-                  <th className="text-left px-3 py-2">Unit Price</th>
-                  <th className="text-left px-3 py-2">Total</th>
-                </tr>
+                  <tr>
+                    <th className="text-left px-3 py-2">Date</th>
+                    <th className="text-left px-3 py-2">Branch</th>
+                    <th className="text-left px-3 py-2">Employee</th>
+                    <th className="text-left px-3 py-2">Medicine</th>
+                    <th className="text-left px-3 py-2">Qty</th>
+                    <th className="text-left px-3 py-2">Unit Price</th>
+                    <th className="text-left px-3 py-2">Total</th>
+                    <th className="text-left px-3 py-2">Status</th>
+                  </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {filtered.map((s) => {
@@ -270,6 +271,36 @@ const AdminSales = () => {
                       </td>
                       <td className="px-3 py-2 font-mono font-semibold">
                         {ceilCurrency(tot)}
+                      </td>
+                      <td className="px-3 py-2">
+                        {s.refundedAt ? (
+                          <span className="text-xs bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded">Refunded</span>
+                        ) : (
+                          <button
+                            onClick={async () => {
+                              const note = window.prompt("Refund reason:");
+                              if (note === null) return;
+                              try {
+                                const res = await authFetch(`${API_BASE}/sales/${s._id}/refund`, {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ note: note || "" }),
+                                });
+                                const data = await res.json();
+                                if (res.ok && data.success) {
+                                  load();
+                                } else {
+                                  alert(data.message || "Refund failed");
+                                }
+                              } catch {
+                                alert("Network error");
+                              }
+                            }}
+                            className="text-xs px-2 py-1 rounded border border-red-500/30 text-red-400 hover:bg-red-500/10"
+                          >
+                            Refund
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );

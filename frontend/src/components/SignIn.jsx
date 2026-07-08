@@ -32,9 +32,6 @@ const SignIn = () => {
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        if (data.token) {
-          localStorage.setItem("token", data.token);
-        }
         if (data.user?.role) {
           localStorage.setItem("role", data.user.role);
         }

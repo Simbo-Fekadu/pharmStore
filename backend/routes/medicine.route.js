@@ -9,6 +9,8 @@ import {
   restoreMedicine,
   purgeMedicine,
   getActiveMedicines,
+  getNearExpiryMedicines,
+  getExpiredMedicines,
   importMedicines,
   importTemplate,
   exportMedicinesExcel,
@@ -38,6 +40,8 @@ router.post(
 // List requires auth to properly scope by pharmacy
 router.get("/", verifyToken, attachPharmacyContext, getMedicines);
 router.get("/active/list", verifyToken, attachPharmacyContext, getActiveMedicines);
+router.get("/near-expiry", verifyToken, attachPharmacyContext, getNearExpiryMedicines);
+router.get("/expired", verifyToken, attachPharmacyContext, getExpiredMedicines);
 router.post(
   "/import",
   verifyToken,

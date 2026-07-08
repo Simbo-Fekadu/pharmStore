@@ -26,13 +26,17 @@ const requestSchema = new mongoose.Schema(
     batchNumber: { type: String },
     status: {
       type: String,
-      enum: ["Pending", "Rejected", "Fulfilled"],
+      enum: ["Pending", "Shipped", "Received", "Rejected", "Reversed"],
       default: "Pending",
     },
     reason: { type: String },
     rejectionNote: { type: String },
     fulfilledAt: { type: Date },
+    receivedAt: { type: Date },
+    reversedAt: { type: Date },
+    reversalNote: { type: String },
     approvedByUserId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    receivedByUserId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     // Simple chat-style message thread between branch (employee) and admin
     messages: [
       {

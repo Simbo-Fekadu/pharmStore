@@ -9,6 +9,8 @@ import {
   approveRequest,
   rejectRequest,
   cancelRequest,
+  confirmReceipt,
+  reverseShipment,
   addRequestMessage,
   postLedger,
   getStock,
@@ -64,6 +66,10 @@ router.post(
 );
 // Cancel (branch) its own pending request
 router.post("/request/:id/cancel", cancelRequest);
+// Confirm receipt of shipped request (branch)
+router.post("/request/:id/confirm-receipt", confirmReceipt);
+// Reverse a shipped request (admin, when goods are lost/damaged)
+router.post("/request/:id/reverse", requireInventoryAccess, reverseShipment);
 // Add message to request thread
 router.post("/request/:id/message", addRequestMessage);
 

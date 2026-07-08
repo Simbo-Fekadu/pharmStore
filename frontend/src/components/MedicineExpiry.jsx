@@ -13,20 +13,11 @@ const MedicineExpiry = ({ type }) => {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await authFetch(`${API_BASE}/medicine`);
+      const ep = isExpired ? `${API_BASE}/medicine/expired` : `${API_BASE}/medicine/near-expiry?days=${daysThreshold}`;
+      const res = await authFetch(ep);
       const data = await res.json();
       if (res.ok && data.success) {
-        const now = Date.now();
-        const filtered = (data.medicines || []).filter((m) => {
-          if (m.isDeleted) return false;
-          const expTime = new Date(m.expiryDate).getTime();
-          if (isExpired) {
-            return expTime < now;
-          }
-          const cutoff = now + daysThreshold * 86400000;
-          return expTime <= cutoff && expTime >= now;
-        });
-        setList(filtered);
+        setList(data.medicines || []);
       }
     } catch {
       /* ignore */

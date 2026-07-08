@@ -47,8 +47,8 @@ const EmployeeLayout = () => {
   }, []);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) navigate("/signin");
+    const role = localStorage.getItem("role");
+    if (!role) navigate("/signin");
   }, [navigate]);
 
   // Title derivation matching admin approach

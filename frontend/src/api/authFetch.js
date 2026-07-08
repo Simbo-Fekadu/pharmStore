@@ -1,21 +1,49 @@
-// Centralized authenticated fetch wrapper
-// Automatically attaches Authorization header if a token is stored in localStorage
-// Always sends credentials to allow cookie-based fallbacks
+import { API_BASE } from "./base";
 
-export function authFetch(url, options = {}) {
-  try {
-    const token = localStorage.getItem("token");
-    const mergedHeaders = {
-      ...(options.headers || {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    };
-    return fetch(url, {
+let refreshPromise = null;
+
+async function refreshSession() {
+  if (!refreshPromise) {
+    refreshPromise = fetch(`${API_BASE}/auth/refresh`, {
+      method: "POST",
       credentials: "include",
-      ...options,
-      headers: mergedHeaders,
+    }).then((r) => {
+      refreshPromise = null;
+      return r;
+    }).catch(() => {
+      refreshPromise = null;
+      return null;
     });
-  } catch {
-    // Fallback: still attempt raw fetch
-    return fetch(url, options);
   }
+  return refreshPromise;
+}
+
+export async function authFetch(url, options = {}) {
+  const res = await fetch(url, {
+    credentials: "include",
+    ...options,
+    headers: {
+      ...(options.headers || {}),
+    },
+  });
+
+  if (res.status === 403) {
+    const refreshRes = await refreshSession();
+    if (refreshRes && refreshRes.ok) {
+      return fetch(url, {
+        credentials: "include",
+        ...options,
+        headers: {
+          ...(options.headers || {}),
+        },
+      });
+    }
+    localStorage.removeItem("role");
+    localStorage.removeItem("user");
+    if (window.location.pathname !== "/signin") {
+      window.location.href = "/signin";
+    }
+  }
+
+  return res;
 }

@@ -7,6 +7,7 @@ import {
   listAllSales,
   getAdminSalesSummary,
   getAdminTodayTotal,
+  refundSale,
 } from "../controllers/sale.controller.js";
 import {
   verifyToken,
@@ -40,5 +41,8 @@ router.get("/admin/summary", requireAdmin, getAdminSalesSummary);
 
 // Admin-only: today's total across all branches
 router.get("/admin/today-total", requireAdmin, getAdminTodayTotal);
+
+// Admin-only: refund a sale
+router.post("/:id/refund", requireAdmin, refundSale);
 
 export default router;
