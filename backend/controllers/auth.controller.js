@@ -48,42 +48,13 @@ export const signup = async (req, res, next) => {
 export const signin = async (req, res, next) => {
   const { email, password } = req.body;
   try {
-    const SUPER_EMAIL = (
-      process.env.SUPERADMIN_EMAIL || "simboadmin@gmail.com"
-    ).toLowerCase();
-    const SUPER_PASSWORD = process.env.SUPERADMIN_PASSWORD || "ih3ba3so"; // Plaintext comparison path
     const normalizedEmail = (email || "").toLowerCase().trim();
-    let validUser;
-    let superAuth = false;
-    if (normalizedEmail === SUPER_EMAIL && password === SUPER_PASSWORD) {
-      // Fetch or create super admin user record
-      validUser = await User.findOne({ email: SUPER_EMAIL }).populate("branch");
-      if (!validUser) {
-        const hashed = bcryptjs.hashSync(SUPER_PASSWORD, 10);
-        validUser = new User({
-          username: SUPER_EMAIL.split("@")[0] || "superadmin",
-          email: SUPER_EMAIL,
-          password: hashed,
-          role: "super_admin",
-        });
-        await validUser.save();
-      } else if (validUser.role !== "super_admin") {
-        validUser.role = "super_admin";
-        await validUser.save().catch(() => {});
-      }
-      superAuth = true; // bypass normal password flow
-    } else {
-      validUser = await User.findOne({ email: normalizedEmail }).populate(
-        "branch"
-      );
-      if (!validUser) return next(errorHandler(404, "User not found!"));
-      const validPassword = bcryptjs.compareSync(password, validUser.password);
-      if (!validPassword) return next(errorHandler(401, "Incorrect password"));
-      // Additional guard: if somehow DB has super_admin for another email, deny (single authority model)
-      if (validUser.role === "super_admin" && normalizedEmail !== SUPER_EMAIL) {
-        return next(errorHandler(403, "Forbidden"));
-      }
-    }
+    const validUser = await User.findOne({ email: normalizedEmail }).populate(
+      "branch"
+    );
+    if (!validUser) return next(errorHandler(404, "User not found!"));
+    const validPassword = bcryptjs.compareSync(password, validUser.password);
+    if (!validPassword) return next(errorHandler(401, "Incorrect password"));
     // Legacy migration: if no branch but single-element branches array, promote it
     if (
       !validUser.branch &&

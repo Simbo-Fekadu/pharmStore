@@ -36,21 +36,31 @@ export const getUser = async (req, res) => {
 // Update user
 export const updateUser = async (req, res, next) => {
   try {
+    // Whitelist allowed fields to prevent mass assignment
+    const allowedFields = [
+      "username",
+      "email",
+      "password",
+      "role",
+      "branch",
+    ];
+    const update = {};
+    for (const field of allowedFields) {
+      if (req.body[field] !== undefined) update[field] = req.body[field];
+    }
     // Prevent role escalation by non-admin (should be enforced by middleware too)
-    if (req.body.role && !["admin", "super_admin"].includes(req.user.role)) {
+    if (update.role && !["admin", "super_admin"].includes(req.user.role)) {
       return next(errorHandler(403, "Cannot change role"));
     }
     // Never allow setting super_admin via API
-    if (req.body.role === "super_admin") {
+    if (update.role === "super_admin") {
       return next(errorHandler(403, "Cannot assign super_admin role"));
     }
     // If password provided, hash it
-    if (req.body.password) {
-      req.body.password = bcrypt.hashSync(req.body.password, 10);
+    if (update.password) {
+      update.password = bcrypt.hashSync(update.password, 10);
     }
-    // If attempting to set branch ensure valid format (string id)
-    if (req.body.branches) delete req.body.branches; // ignore legacy field
-    const user = await User.findByIdAndUpdate(req.params.id, req.body, {
+    const user = await User.findByIdAndUpdate(req.params.id, update, {
       new: true,
     }).populate("branch");
     if (!user)

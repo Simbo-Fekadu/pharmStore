@@ -199,7 +199,28 @@ export const createMedicine = async (req, res) => {
         /* ignore */
       }
     }
-    const body = { ...req.body, createdBy };
+    const allowedFields = [
+      "medicineName",
+      "brand",
+      "category",
+      "unit",
+      "baseUnit",
+      "packUnit",
+      "packSize",
+      "batchNumber",
+      "expiryDate",
+      "purchasePrice",
+      "sellingPriceBase",
+      "sellingPricePack",
+      "sellingPrice",
+      "quantity",
+      "supplier",
+      "createdBy",
+    ];
+    const body = { createdBy };
+    for (const field of allowedFields) {
+      if (req.body[field] !== undefined) body[field] = req.body[field];
+    }
     if (req.pharmacyId) body.pharmacy = req.pharmacyId;
     // Basic required field validation before hitting Mongoose so we can return clearer messages
     const problems = [];
@@ -379,7 +400,26 @@ export const getMedicine = async (req, res) => {
 
 export const updateMedicine = async (req, res) => {
   try {
-    const update = { ...req.body };
+    const allowedFields = [
+      "medicineName",
+      "brand",
+      "category",
+      "unit",
+      "baseUnit",
+      "packUnit",
+      "packSize",
+      "batchNumber",
+      "expiryDate",
+      "purchasePrice",
+      "sellingPriceBase",
+      "sellingPricePack",
+      "sellingPrice",
+      "supplier",
+    ];
+    const update = {};
+    for (const field of allowedFields) {
+      if (req.body[field] !== undefined) update[field] = req.body[field];
+    }
     if (typeof update.supplier === "string") {
       const trimmed = update.supplier.trim();
       if (!trimmed) delete update.supplier;
@@ -408,7 +448,6 @@ export const updateMedicine = async (req, res) => {
         }
       }
     }
-    // Avoid forcing sellingPrice; allow model to maintain consistency
     if (typeof update.batchNumber === "string") {
       update.batchNumber = update.batchNumber.trim();
     }
@@ -417,7 +456,6 @@ export const updateMedicine = async (req, res) => {
         .status(400)
         .json({ success: false, message: "batchNumber cannot be empty" });
     }
-    // Restrict to same pharmacy when scoped
     const q = { _id: req.params.id };
     if (req.pharmacyId) q.pharmacy = req.pharmacyId;
     const medicine = await Medicine.findOneAndUpdate(q, update, {

@@ -55,15 +55,25 @@ export const createUserAnyRole = async (req, res, next) => {
 
 export const updateUserAnyRole = async (req, res, next) => {
   try {
-    const id = req.params.userId || req.params.id; // support pharmacy-scoped route
-    const body = { ...req.body };
+    const id = req.params.userId || req.params.id;
+    const allowedFields = [
+      "username",
+      "email",
+      "password",
+      "role",
+      "branch",
+      "pharmacy",
+    ];
+    const body = {};
+    for (const field of allowedFields) {
+      if (req.body[field] !== undefined) body[field] = req.body[field];
+    }
     if (body.role === "super_admin") {
       return next(errorHandler(403, "Cannot assign super_admin"));
     }
     if (body.password) {
       body.password = bcrypt.hashSync(body.password, 10);
     }
-    // If changing user to admin, clear branch assignment
     if (body.role === "admin") {
       body.branch = undefined;
     }
