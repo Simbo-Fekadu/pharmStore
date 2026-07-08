@@ -17,9 +17,23 @@ function logAudit(action, actorId, meta = {}) {
   );
 }
 
-export const listAllUsers = async (_req, res) => {
-  const users = await User.find().populate("branch").select("-password");
-  res.json({ success: true, users });
+export const listAllUsers = async (req, res, next) => {
+  try {
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
+    const skip = (page - 1) * limit;
+    const [users, totalCount] = await Promise.all([
+      User.find()
+        .populate("branch")
+        .select("-password")
+        .skip(skip)
+        .limit(limit),
+      User.countDocuments(),
+    ]);
+    res.json({ success: true, page, limit, totalCount, users });
+  } catch (e) {
+    next(errorHandler(400, e.message));
+  }
 };
 
 export const createUserAnyRole = async (req, res, next) => {
@@ -145,6 +159,7 @@ export const systemOverview = async (_req, res, next) => {
       pendingRequestsCount,
       topCategoriesRaw,
       stockAgg,
+      distinctMedicines,
       recentRequestsRaw,
       recentLedgerRaw,
     ] = await Promise.all([
@@ -171,14 +186,9 @@ export const systemOverview = async (_req, res, next) => {
         { $limit: 8 },
       ]),
       StockBalance.aggregate([
-        {
-          $group: {
-            _id: null,
-            totalOnHand: { $sum: { $ifNull: ["$onHandQty", 0] } },
-            distinctMedicines: { $addToSet: "$medicineId" },
-          },
-        },
+        { $group: { _id: null, totalOnHand: { $sum: { $ifNull: ["$onHandQty", 0] } } } },
       ]),
+      StockBalance.distinct("medicineId"),
       Request.find({})
         .sort({ createdAt: -1 })
         .limit(5)
@@ -200,10 +210,7 @@ export const systemOverview = async (_req, res, next) => {
       (acc, r) => ({ ...acc, [r._id]: r.count }),
       {}
     );
-    const stockInfo = stockAgg[0] || {
-      totalOnHand: 0,
-      distinctMedicines: [],
-    };
+    const stockInfo = stockAgg[0] || { totalOnHand: 0 };
 
     const overview = {
       users: {
@@ -220,7 +227,7 @@ export const systemOverview = async (_req, res, next) => {
       },
       inventory: {
         totalOnHand: stockInfo.totalOnHand || 0,
-        distinctMedicines: (stockInfo.distinctMedicines || []).length,
+        distinctMedicines: (distinctMedicines || []).length,
       },
       requests: {
         pending: pendingRequestsCount,

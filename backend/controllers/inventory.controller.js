@@ -127,13 +127,23 @@ export const getStock = async (req, res, next) => {
     if (medicineId) filter.medicineId = medicineId;
     if (!includeZero) filter.onHandQty = { $gt: 0 };
 
-    let balances = await StockBalance.find(filter)
-      .populate(
-        "medicineId",
-        "medicineName brand category purchasePrice sellingPrice supplier batchNumber"
-      )
-      .populate("locationId", "name")
-      .lean();
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
+    const skip = (page - 1) * limit;
+
+    const [rawBalances, totalCount] = await Promise.all([
+      StockBalance.find(filter)
+        .populate(
+          "medicineId",
+          "medicineName brand category purchasePrice sellingPrice supplier batchNumber"
+        )
+        .populate("locationId", "name")
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      StockBalance.countDocuments(filter),
+    ]);
+    let balances = rawBalances;
 
     // Fallback: if central store queried for specific medicine and no balance doc yet, derive from ledger net
     if (
@@ -184,7 +194,7 @@ export const getStock = async (req, res, next) => {
         }
       }
     }
-    res.json({ success: true, count: balances.length, balances });
+    res.json({ success: true, page, limit, totalCount, count: balances.length, balances });
   } catch (err) {
     next(err);
   }
@@ -786,9 +796,19 @@ export const getBranchMedicines = async (req, res) => {
         .status(400)
         .json({ success: false, message: "Invalid branchId" });
     }
-    const balances = await StockBalance.find({ locationId: branchId })
-      .populate("medicineId")
-      .lean();
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
+    const skip = (page - 1) * limit;
+    const filter = { locationId: branchId };
+    const [rawBalances, totalCount] = await Promise.all([
+      StockBalance.find(filter)
+        .populate("medicineId")
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      StockBalance.countDocuments(filter),
+    ]);
+    let balances = rawBalances;
     const items = balances.map((b) => ({
       _id: b._id,
       medicineId: b.medicineId?._id,
@@ -808,20 +828,30 @@ export const getBranchMedicines = async (req, res) => {
       expiryDate: b.medicineId?.expiryDate,
       quantity: b.onHandQty || 0,
     }));
-    res.json({ success: true, count: items.length, medicines: items });
+    res.json({ success: true, page, limit, totalCount, count: items.length, medicines: items });
   } catch (e) {
     res.status(400).json({ success: false, message: e.message });
   }
 };
 
-export const listRequests = async (_req, res) => {
+export const listRequests = async (req, res) => {
   try {
-    const requests = await Request.find()
-      .populate("medicine")
-      .populate("branch")
-      .populate("approvedByUserId", "username role")
-      .sort({ createdAt: -1 });
-    res.status(200).json({ success: true, requests });
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
+    const skip = (page - 1) * limit;
+    const filter = {};
+    if (req.query.status) filter.status = req.query.status;
+    const [requests, totalCount] = await Promise.all([
+      Request.find(filter)
+        .populate("medicine")
+        .populate("branch")
+        .populate("approvedByUserId", "username role")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      Request.countDocuments(filter),
+    ]);
+    res.status(200).json({ success: true, page, limit, totalCount, requests });
   } catch (e) {
     res.status(400).json({ success: false, message: e.message });
   }

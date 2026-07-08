@@ -38,6 +38,7 @@ const stockLedgerSchema = new Schema(
 
 stockLedgerSchema.index({ medicineId: 1, batchId: 1, locationId: 1, createdAt: -1 });
 stockLedgerSchema.index({ sourceDocType: 1, sourceDocId: 1 });
+stockLedgerSchema.index({ locationId: 1, createdAt: -1 });
 
 // Materialized balance per item+batch+location
 const stockBalanceSchema = new Schema(

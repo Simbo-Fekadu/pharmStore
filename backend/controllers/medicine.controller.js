@@ -13,10 +13,17 @@ import xlsx from "xlsx";
 export const getMedicines = async (req, res) => {
   try {
     const { includeDeleted, withStock, storeOnly, centralNet } = req.query;
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
+    const skip = (page - 1) * limit;
+
     const filter = includeDeleted === "true" ? {} : { isDeleted: false };
     // Scope by pharmacy if provided/attached
     if (req.pharmacyId) filter.pharmacy = req.pharmacyId;
-    const medicines = await Medicine.find(filter).populate("supplier");
+    const [medicines, totalCount] = await Promise.all([
+      Medicine.find(filter).populate("supplier").skip(skip).limit(limit),
+      Medicine.countDocuments(filter),
+    ]);
     if (withStock === "true" && medicines.length) {
       const ids = medicines.map((m) => m._id);
       // store-only filter
@@ -173,7 +180,7 @@ export const getMedicines = async (req, res) => {
         }
       }
     }
-    res.status(200).json({ success: true, medicines });
+    res.status(200).json({ success: true, page, limit, totalCount, medicines });
   } catch (e) {
     res.status(400).json({ success: false, message: e.message });
   }
@@ -551,10 +558,16 @@ export const purgeMedicine = async (req, res) => {
 export const getActiveMedicines = async (req, res) => {
   try {
     const today = new Date();
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
+    const skip = (page - 1) * limit;
     const q = { isDeleted: false, expiryDate: { $gte: today } };
     if (req.pharmacyId) q.pharmacy = req.pharmacyId;
-    const medicines = await Medicine.find(q).populate("supplier");
-    res.json({ success: true, medicines });
+    const [medicines, totalCount] = await Promise.all([
+      Medicine.find(q).populate("supplier").skip(skip).limit(limit),
+      Medicine.countDocuments(q),
+    ]);
+    res.json({ success: true, page, limit, totalCount, medicines });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
   }

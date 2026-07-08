@@ -14,6 +14,7 @@ async function buildDataset(type, scope, query) {
     const users = await User.find(q)
       .select("username email role createdAt branch")
       .populate("branch", "name")
+      .limit(10000)
       .lean();
     const columns = ["Username", "Email", "Role", "Branch", "Created At"];
     const rows = users.map((u) => [
@@ -33,6 +34,7 @@ async function buildDataset(type, scope, query) {
       .select(
         "medicineName category batchNumber expiryDate purchasePrice sellingPriceBase sellingPricePack createdAt"
       )
+      .limit(10000)
       .lean();
     const columns = [
       "Name",
@@ -84,6 +86,7 @@ async function buildDataset(type, scope, query) {
         "medicineName category batchNumber expiryDate purchasePrice sellingPriceBase sellingPricePack"
       )
       .populate("locationId", "name")
+      .limit(10000)
       .lean();
     const columns = [
       "Branch",

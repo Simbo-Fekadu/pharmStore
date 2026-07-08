@@ -151,26 +151,34 @@ export const getDailySales = async (req, res, next) => {
       endDate.setHours(23, 59, 59, 999);
     }
 
-    const sales = await Sale.find({
-      branchId,
-      date: { $gte: startDate, $lte: endDate },
-    })
-      .populate("medicineId", "medicineName")
-      .populate("employeeId", "username")
-      .sort({ createdAt: -1 });
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
+    const skip = (page - 1) * limit;
+    const filter = { branchId, date: { $gte: startDate, $lte: endDate } };
+    const [sales, totalCount] = await Promise.all([
+      Sale.find(filter)
+        .populate("medicineId", "medicineName")
+        .populate("employeeId", "username")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      Sale.countDocuments(filter),
+    ]);
 
     const totalAmount = sales.reduce(
       (sum, sale) => sum + sale.quantity * sale.price,
       0
     );
-    const totalTransactions = sales.length;
 
     res.json({
       success: true,
+      page,
+      limit,
+      totalCount,
       sales,
       summary: {
         totalAmount,
-        totalTransactions,
+        totalTransactions: sales.length,
         date: startDate.toISOString().split("T")[0],
       },
     });
@@ -197,13 +205,18 @@ export const getEmployeeSales = async (req, res, next) => {
       endDate.setHours(23, 59, 59, 999);
     }
 
-    const sales = await Sale.find({
-      branchId,
-      employeeId,
-      date: { $gte: startDate, $lte: endDate },
-    })
-      .populate("medicineId", "medicineName")
-      .sort({ createdAt: -1 });
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
+    const skip = (page - 1) * limit;
+    const filter = { branchId, employeeId, date: { $gte: startDate, $lte: endDate } };
+    const [sales, totalCount] = await Promise.all([
+      Sale.find(filter)
+        .populate("medicineId", "medicineName")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      Sale.countDocuments(filter),
+    ]);
 
     const totalAmount = sales.reduce(
       (sum, sale) => sum + sale.quantity * sale.price,
@@ -212,6 +225,9 @@ export const getEmployeeSales = async (req, res, next) => {
 
     res.json({
       success: true,
+      page,
+      limit,
+      totalCount,
       sales,
       summary: {
         totalAmount,
@@ -249,12 +265,18 @@ export const getSalesSummary = async (req, res, next) => {
       end.setHours(23, 59, 59, 999);
     }
 
-    const sales = await Sale.find({
-      branchId,
-      date: { $gte: start, $lte: end },
-    })
-      .populate("employeeId", "username")
-      .sort({ date: -1 });
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
+    const skip = (page - 1) * limit;
+    const filter = { branchId, date: { $gte: start, $lte: end } };
+    const [sales, totalCount] = await Promise.all([
+      Sale.find(filter)
+        .populate("employeeId", "username")
+        .sort({ date: -1 })
+        .skip(skip)
+        .limit(limit),
+      Sale.countDocuments(filter),
+    ]);
 
     const summary = sales.reduce((acc, sale) => {
       const employeeName = sale.employeeName;
@@ -273,6 +295,9 @@ export const getSalesSummary = async (req, res, next) => {
 
     res.json({
       success: true,
+      page,
+      limit,
+      totalCount,
       summary,
       period: {
         start: start.toISOString().split("T")[0],
