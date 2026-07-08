@@ -149,21 +149,15 @@ export const getStock = async (req, res, next) => {
           });
         }
       } else {
-        // Second fallback: legacy medicine.quantity field for central store stock (pre-ledger data)
+        // No StockBalance or StockLedger entry for this location
         const med = await Medicine.findById(medicineId).lean();
         const loc = await Store.findById(locationId).lean();
-        if (
-          med &&
-          loc &&
-          typeof med.quantity === "number" &&
-          med.quantity > 0
-        ) {
+        if (med && loc) {
           balances.push({
-            _id: `${medicineId}-${locationId}-legacy`,
+            _id: `${medicineId}-${locationId}-empty`,
             medicineId: med,
             locationId: { _id: loc._id, name: loc.name },
-            onHandQty: med.quantity,
-            legacy: true,
+            onHandQty: 0,
           });
         }
       }
@@ -794,21 +788,19 @@ export const cancelRequest = async (req, res, next) => {
   }
 };
 
-// Central store availability for a single medicine (sums across all central stores if multiple)
+// Central store availability for a single medicine (sums across all central stores)
 export const getCentralAvailable = async (req, res, next) => {
   try {
     const { medicineId } = req.query;
     if (!medicineId || !mongoose.Types.ObjectId.isValid(medicineId)) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Valid medicineId required" });
+      return res.status(400).json({ success: false, message: "Valid medicineId required" });
     }
     const stores = await Store.find({}, "_id").lean();
     const storeIds = stores.map((s) => s._id);
     if (!storeIds.length) {
-      return res.json({ success: true, available: 0, source: "none" });
+      return res.json({ success: true, available: 0 });
     }
-    // 1) Sum StockBalance across all stores
+    // StockBalance is the single source of truth for current stock
     const balAgg = await StockBalance.aggregate([
       {
         $match: {
@@ -818,58 +810,8 @@ export const getCentralAvailable = async (req, res, next) => {
       },
       { $group: { _id: null, total: { $sum: "$onHandQty" } } },
     ]);
-    const balTotal = balAgg[0]?.total || 0;
-    if (balTotal > 0) {
-      return res.json({
-        success: true,
-        available: balTotal,
-        source: "balance",
-      });
-    }
-    // 2) Fallback to ledger net
-    const netAgg = await StockLedger.aggregate([
-      {
-        $match: {
-          medicineId: new mongoose.Types.ObjectId(medicineId),
-          locationId: { $in: storeIds },
-        },
-      },
-      { $group: { _id: null, net: { $sum: "$quantity" } } },
-    ]);
-    const net = netAgg[0]?.net || 0;
-    if (net > 0) {
-      return res.json({ success: true, available: net, source: "ledger" });
-    }
-    // 3) StockBalance fallback (store type)
-    const sbAgg = await StockBalance.aggregate([
-      {
-        $match: {
-          medicineId: new mongoose.Types.ObjectId(medicineId),
-          locationType: "Store",
-          locationId: { $in: storeIds },
-        },
-      },
-      { $group: { _id: null, total: { $sum: "$onHandQty" } } },
-    ]);
-    const sbTotal = sbAgg[0]?.total || 0;
-    if (sbTotal > 0) {
-      return res.json({
-        success: true,
-        available: sbTotal,
-        source: "StockBalance",
-      });
-    }
-    // 4) Legacy medicine.quantity (very old data)
-    const med = await Medicine.findById(medicineId).lean();
-    const legacyQty = typeof med?.quantity === "number" ? med.quantity : 0;
-    if (legacyQty > 0) {
-      return res.json({
-        success: true,
-        available: legacyQty,
-        source: "legacyMed",
-      });
-    }
-    return res.json({ success: true, available: 0, source: "none" });
+    const available = balAgg[0]?.total || 0;
+    return res.json({ success: true, available });
   } catch (e) {
     next(e);
   }
