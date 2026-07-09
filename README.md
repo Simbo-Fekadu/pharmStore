@@ -312,6 +312,37 @@ frontend/src/
 
 ---
 
+## Testing
+
+Integration tests live in `backend/__tests__/` and use **vitest** with a real MongoDB instance. All 22 tests cover every issue (Issues #1–#6).
+
+| Test file | Issue | What it covers |
+|---|---|---|
+| `auth.test.js` | #5 — Auth hardening | httpOnly cookie, no token in signin body, refresh endpoint, `requireAdmin` on supplier/export routes |
+| `stock.test.js` | #1 + #6 — Atomic decrement | `safeDecrement` sufficiency guard, concurrent oversell prevention, `StockBalance` single source of truth |
+| `request.test.js` | #2 — Request lifecycle | Approve (central deduct + branch reserve), confirm receipt (reserve→onHand), reverse shipment (restore) |
+| `sale.test.js` | #4 — Sale + refund | Sale deducts branch stock, refund restores stock + sets `refundedAt`, non-admin refund rejected |
+| `medicine.test.js` | #3 — Expiry filtering | `/near-expiry` and `/expired` endpoints return correct medicines |
+
+### Prerequisites
+
+- MongoDB must be running as a **replica set** (transactions are used). Start with:
+  ```bash
+  mongod --replSet rs0 --dbpath /path/to/data
+  mongosh --eval "rs.initiate()"
+  ```
+
+### Run tests
+
+```bash
+cd backend
+npm test              # or: npx vitest run
+```
+
+The test database defaults to `mongodb://localhost:27017/pharmstore_test` (set `MONGO_TEST_URL` to override). All collections are dropped before each test file.
+
+---
+
 ## Setup
 
 ### Prerequisites
