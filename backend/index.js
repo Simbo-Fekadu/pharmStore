@@ -522,4 +522,7 @@ app.use((err, req, res, _next) => {
   });
 });
 
-start();
+if (process.env.NODE_ENV !== "test") {
+  start();
+}
+export default app;
